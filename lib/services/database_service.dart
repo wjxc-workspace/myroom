@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -39,8 +40,9 @@ class DatabaseService {
     final fullPath = join(dbPath, 'myroom.db');
     return openDatabase(
       fullPath,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -113,6 +115,13 @@ class DatabaseService {
 
     // Seed initial data on first run
     await _seed(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE ideas ADD COLUMN ai_summary TEXT');
+      await db.execute('ALTER TABLE ideas ADD COLUMN links      TEXT');
+    }
   }
 
   Future<void> _seed(Database db) async {
@@ -268,7 +277,30 @@ class DatabaseService {
   Future<List<Idea>> getIdeas() async {
     final database = await db;
     final rows = await database.query('ideas', orderBy: 'created_at ASC');
-    return rows.map((r) => Idea(id: r['id'] as int, text: r['text'] as String)).toList();
+    return rows.map((r) {
+      final linksJson = r['links'] as String?;
+      final links = linksJson != null
+          ? (jsonDecode(linksJson) as List)
+              .map((l) => IdeaLink(title: l['title'] as String, url: l['url'] as String))
+              .toList()
+          : <IdeaLink>[];
+      return Idea(
+        id: r['id'] as int,
+        text: r['text'] as String,
+        aiSummary: r['ai_summary'] as String?,
+        links: links,
+      );
+    }).toList();
+  }
+
+  Future<void> updateIdeaAiResult(int id, String aiSummary, String linksJson) async {
+    final database = await db;
+    await database.update(
+      'ideas',
+      {'ai_summary': aiSummary, 'links': linksJson},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> insertIdea(String text) async {

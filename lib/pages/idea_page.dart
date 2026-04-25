@@ -9,7 +9,7 @@ enum IdeaSub { input, explore }
 
 class IdeaPage extends StatefulWidget {
   final List<Idea> ideas;
-  final ValueChanged<String> onIdeaAdded;
+  final Future<void> Function(String) onIdeaAdded;
 
   const IdeaPage({super.key, required this.ideas, required this.onIdeaAdded});
 
@@ -20,6 +20,8 @@ class IdeaPage extends StatefulWidget {
 class _IdeaPageState extends State<IdeaPage> {
   IdeaSub _sub = IdeaSub.input;
   final _draftCtrl = TextEditingController();
+  bool _adding = false;
+  final Set<int> _expandedIds = {};
 
   @override
   void dispose() {
@@ -27,10 +29,16 @@ class _IdeaPageState extends State<IdeaPage> {
     super.dispose();
   }
 
-  void _addIdea() {
-    if (_draftCtrl.text.isEmpty) return;
-    widget.onIdeaAdded(_draftCtrl.text);
+  Future<void> _addIdea() async {
+    if (_draftCtrl.text.isEmpty || _adding) return;
+    final text = _draftCtrl.text;
     _draftCtrl.clear();
+    setState(() => _adding = true);
+    try {
+      await widget.onIdeaAdded(text);
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
   }
 
   @override
@@ -93,103 +101,54 @@ class _IdeaPageState extends State<IdeaPage> {
         ...widget.ideas.asMap().entries.map((entry) {
           final i = entry.key;
           final idea = entry.value;
+          final expanded = _expandedIds.contains(idea.id);
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: MrCard(
-              child: Row(
+              onTap: () => setState(() {
+                expanded ? _expandedIds.remove(idea.id) : _expandedIds.add(idea.id);
+              }),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(
-                      color: AppColors.bg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${i + 1}',
-                        style: AppText.body(size: 13, weight: FontWeight.w600),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: AppColors.bg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${i + 1}',
+                            style: AppText.body(size: 13, weight: FontWeight.w600),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(idea.text, style: AppText.body(size: 14, height: 1.55)),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        expanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                        size: 15,
+                        color: AppColors.muted,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(idea.text, style: AppText.body(size: 14, height: 1.55)),
-                  ),
+                  if (expanded) ...[
+                    const SizedBox(height: 12),
+                    _buildAiPanel(idea),
+                  ],
                 ],
               ),
             ),
           );
         }),
-
-        if (widget.ideas.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Center(
-            child: Icon(LucideIcons.chevronDown, size: 22, color: AppColors.dark.withOpacity(0.3)),
-          ),
-          const SizedBox(height: 10),
-
-          // AI extraction box
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.dark,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(LucideIcons.sparkles, size: 14, color: AppColors.amber),
-                    const SizedBox(width: 6),
-                    Text(
-                      'AI 核心洞察萃取',
-                      style: AppText.caption(
-                        size: 11,
-                        weight: FontWeight.w600,
-                        color: AppColors.amber,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                RichText(
-                  text: TextSpan(
-                    style: AppText.body(
-                      size: 14,
-                      color: Colors.white.withOpacity(0.88),
-                      height: 1.7,
-                    ).copyWith(fontStyle: FontStyle.italic),
-                    children: [
-                      const TextSpan(text: '「這些想法都指向'),
-                      TextSpan(
-                        text: '人性化介面',
-                        style: TextStyle(
-                          color: AppColors.amber,
-                          fontWeight: FontWeight.w600,
-                          fontStyle: FontStyle.normal,
-                        ),
-                      ),
-                      const TextSpan(text: '與'),
-                      TextSpan(
-                        text: '自動化輔助',
-                        style: TextStyle(
-                          color: AppColors.sage,
-                          fontWeight: FontWeight.w600,
-                          fontStyle: FontStyle.normal,
-                        ),
-                      ),
-                      const TextSpan(text: '的交叉點——你在探索如何讓科技更貼近人的思維節奏。」'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-        ],
 
         // Input form
         MrCard(
@@ -210,20 +169,111 @@ class _IdeaPageState extends State<IdeaPage> {
               ),
               const SizedBox(height: 8),
               GestureDetector(
-                onTap: _addIdea,
-                child: Container(
+                onTap: _adding ? null : _addIdea,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.dark,
+                    color: _adding ? AppColors.dark.withOpacity(0.6) : AppColors.dark,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text('新增', style: AppText.body(size: 13, weight: FontWeight.w500, color: Colors.white)),
+                  child: _adding
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(
+                          '新增',
+                          style: AppText.body(size: 13, weight: FontWeight.w500, color: Colors.white),
+                        ),
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAiPanel(Idea idea) {
+    if (idea.aiSummary == null) {
+      return Row(
+        children: [
+          Icon(LucideIcons.sparkles, size: 13, color: AppColors.amber.withOpacity(0.7)),
+          const SizedBox(width: 6),
+          Text('AI 分析中...', style: AppText.caption(size: 12, color: AppColors.muted)),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.dark,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Summary
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(LucideIcons.sparkles, size: 13, color: AppColors.amber),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  idea.aiSummary!,
+                  style: AppText.body(
+                    size: 13,
+                    color: Colors.white.withOpacity(0.9),
+                    height: 1.6,
+                  ).copyWith(fontStyle: FontStyle.italic),
+                ),
+              ),
+            ],
+          ),
+
+          // Links
+          if (idea.links.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(height: 1, color: Colors.white.withOpacity(0.1)),
+            const SizedBox(height: 10),
+            ...idea.links.map((link) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(LucideIcons.link, size: 12, color: AppColors.amber.withOpacity(0.7)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          link.title,
+                          style: AppText.body(
+                            size: 12,
+                            weight: FontWeight.w600,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                        ),
+                        Text(
+                          link.url,
+                          style: AppText.caption(size: 11, color: AppColors.muted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )),
+          ],
+        ],
+      ),
     );
   }
 
@@ -242,7 +292,8 @@ class _IdeaPageState extends State<IdeaPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 46, height: 46,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                     color: r.color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -256,7 +307,9 @@ class _IdeaPageState extends State<IdeaPage> {
                     children: [
                       Row(
                         children: [
-                          Expanded(child: Text(r.title, style: AppText.body(size: 14, weight: FontWeight.w600))),
+                          Expanded(
+                            child: Text(r.title, style: AppText.body(size: 14, weight: FontWeight.w600)),
+                          ),
                           const SizedBox(width: 10),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
