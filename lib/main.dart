@@ -136,6 +136,12 @@ class _MyRoomShellState extends State<MyRoomShell> {
     if (mounted) setState(() => _ideas = updated);
   }
 
+  Future<void> _onIdeaDeleted(int id) async {
+    await DatabaseService.instance.deleteIdea(id);
+    final updated = await DatabaseService.instance.getIdeas();
+    if (mounted) setState(() => _ideas = updated);
+  }
+
   void _onNoteSaved(String dateKey, String content) async {
     await DatabaseService.instance.upsertNote(dateKey, content);
     final updated = await DatabaseService.instance.getNotes();
@@ -281,7 +287,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
                       children: [
                         CalendarPage(events: _events, onEventAdded: _onEventAdded),
                         TodoPage(todos: _todos, onTodoAdded: _onTodoAdded, onTodoToggled: _onTodoToggled),
-                        IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded),
+                        IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded, onIdeaDeleted: _onIdeaDeleted),
                         NotePage(notes: _notes, onNoteSaved: _onNoteSaved),
                         RecapPage(onNavTo: (tab) => setState(() => _activeTab = tab)),
                       ],

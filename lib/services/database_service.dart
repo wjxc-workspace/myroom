@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 import '../models/event.dart';
 import '../models/todo_item.dart';
 import '../models/idea.dart';
+import '../models/ai_resource.dart';
 import '../models/recap_item.dart';
 import '../data/seed_data.dart';
 
@@ -40,7 +41,7 @@ class DatabaseService {
     final fullPath = join(dbPath, 'myroom.db');
     return openDatabase(
       fullPath,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -113,6 +114,17 @@ class DatabaseService {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE pinned_resources (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        title     TEXT    NOT NULL,
+        type      TEXT    NOT NULL,
+        desc      TEXT    NOT NULL,
+        url       TEXT    NOT NULL UNIQUE,
+        pinned_at INTEGER NOT NULL
+      )
+    ''');
+
     // Seed initial data on first run
     await _seed(db);
   }
@@ -121,6 +133,18 @@ class DatabaseService {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE ideas ADD COLUMN ai_summary TEXT');
       await db.execute('ALTER TABLE ideas ADD COLUMN links      TEXT');
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS pinned_resources (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          title     TEXT    NOT NULL,
+          type      TEXT    NOT NULL,
+          desc      TEXT    NOT NULL,
+          url       TEXT    NOT NULL UNIQUE,
+          pinned_at INTEGER NOT NULL
+        )
+      ''');
     }
   }
 
@@ -309,6 +333,44 @@ class DatabaseService {
       'text': text,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  Future<void> deleteIdea(int id) async {
+    final database = await db;
+    await database.delete('ideas', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ─── PINNED RESOURCES ──────────────────────────────────────────────────────
+
+  Future<List<AiResource>> getPinnedResources() async {
+    final database = await db;
+    final rows = await database.query('pinned_resources', orderBy: 'pinned_at DESC');
+    return rows.map((r) => AiResource(
+      title: r['title'] as String,
+      type:  r['type']  as String,
+      desc:  r['desc']  as String,
+      url:   r['url']   as String,
+    )).toList();
+  }
+
+  Future<void> pinResource(AiResource r) async {
+    final database = await db;
+    await database.insert(
+      'pinned_resources',
+      {
+        'title': r.title,
+        'type': r.type,
+        'desc': r.desc,
+        'url': r.url,
+        'pinned_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> unpinResource(String url) async {
+    final database = await db;
+    await database.delete('pinned_resources', where: 'url = ?', whereArgs: [url]);
   }
 
   // ─── NOTES ─────────────────────────────────────────────────────────────────
