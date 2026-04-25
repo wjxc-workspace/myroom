@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../models/recap_item.dart' show Era;
 import '../models/idea.dart' show IdeaLink;
+import '../models/ai_resource.dart';
 export '../models/recap_item.dart' show Era;
 
 // ─── Classification result types ─────────────────────────────────────────────
@@ -333,6 +334,67 @@ class OpenAIService {
     } catch (e) {
       debugPrint('enrichIdea error: $e');
       return null;
+    }
+  }
+
+  // ── Resource recommendations ─────────────────────────────────────────────────
+
+  static const _recommendSystemPrompt =
+      '你是一個知識推薦助理。根據使用者的靈感清單，推薦 4-6 個最相關的學習資源。\n\n'
+      '回傳嚴格 JSON（不含其他文字）：\n'
+      '{"resources":[{"title":"...","type":"書籍|文章|工具|課程|網站","desc":"一句話說明（繁體中文，20字以內）","url":"https://..."}]}\n\n'
+      '規則：url 使用真實知名網址；只回傳 JSON';
+
+  Future<List<AiResource>> fetchRecommendations(List<String> ideaTexts) async {
+    if (ideaTexts.isEmpty) return [];
+    try {
+      final numbered = ideaTexts
+          .take(5)
+          .toList()
+          .asMap()
+          .entries
+          .map((e) => '${e.key + 1}. ${e.value}')
+          .join('\n');
+      final prompt = '我的靈感清單：\n$numbered';
+
+      final response = await http
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': AppConfig.openAiModel,
+              'messages': [
+                {'role': 'system', 'content': _recommendSystemPrompt},
+                {'role': 'user', 'content': prompt},
+              ],
+              'response_format': {'type': 'json_object'},
+              'temperature': 0.6,
+              'max_tokens': 600,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) return [];
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final content = body['choices'][0]['message']['content'] as String;
+      final rawList = (jsonDecode(content)['resources'] as List?) ?? [];
+
+      return rawList
+          .map((r) => AiResource(
+                title: r['title'] as String? ?? '',
+                type: r['type'] as String? ?? '資源',
+                desc: r['desc'] as String? ?? '',
+                url: r['url'] as String? ?? '',
+              ))
+          .where((r) => r.title.isNotEmpty)
+          .toList();
+    } catch (e) {
+      debugPrint('fetchRecommendations error: $e');
+      return [];
     }
   }
 

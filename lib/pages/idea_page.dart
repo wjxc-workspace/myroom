@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme.dart';
 import '../models/idea.dart';
-import '../data/seed_data.dart';
+import '../models/ai_resource.dart';
+import '../services/openai_service.dart';
 import '../widgets/mr_card.dart';
 
 enum IdeaSub { input, explore }
@@ -23,6 +24,22 @@ class _IdeaPageState extends State<IdeaPage> {
   bool _adding = false;
   final Set<int> _expandedIds = {};
 
+  List<AiResource>? _resources; // null = never fetched
+  bool _loadingResources = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.ideas.isNotEmpty) _loadResources();
+  }
+
+  @override
+  void didUpdateWidget(IdeaPage old) {
+    super.didUpdateWidget(old);
+    // Auto-fetch once when ideas first become available
+    if (_resources == null && widget.ideas.isNotEmpty) _loadResources();
+  }
+
   @override
   void dispose() {
     _draftCtrl.dispose();
@@ -40,6 +57,22 @@ class _IdeaPageState extends State<IdeaPage> {
       if (mounted) setState(() => _adding = false);
     }
   }
+
+  Future<void> _loadResources() async {
+    if (_loadingResources) return;
+    setState(() => _loadingResources = true);
+    final texts = widget.ideas.take(5).map((i) => i.text).toList();
+    final result = await OpenAIService.instance.fetchRecommendations(texts);
+    if (mounted) setState(() { _resources = result; _loadingResources = false; });
+  }
+
+  Color _typeColor(String type) => switch (type) {
+    '書籍' => AppColors.sage,
+    '文章' => AppColors.blue,
+    '工具' => AppColors.amber,
+    '課程' => AppColors.rose,
+    _      => AppColors.muted,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -216,7 +249,6 @@ class _IdeaPageState extends State<IdeaPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Summary
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -234,8 +266,6 @@ class _IdeaPageState extends State<IdeaPage> {
               ),
             ],
           ),
-
-          // Links
           if (idea.links.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(height: 1, color: Colors.white.withOpacity(0.1)),
@@ -285,60 +315,110 @@ class _IdeaPageState extends State<IdeaPage> {
         const SizedBox(height: 4),
         Text('根據你的靈感主題，AI 為你找到的相關資源', style: AppText.label(size: 12)),
         const SizedBox(height: 16),
-        ...kResources.map((r) => Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: MrCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: r.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(LucideIcons.fileText, size: 22, color: r.color),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+
+        if (_loadingResources)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          )
+        else if (_resources == null || _resources!.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            child: Center(
+              child: Text(
+                widget.ideas.isEmpty
+                    ? '尚無靈感可分析，先記下你的想法吧！'
+                    : '推薦載入失敗，請點擊重新推薦',
+                style: AppText.label(size: 13, color: AppColors.muted),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        else
+          ..._resources!.map((r) {
+            final color = _typeColor(r.type);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: MrCard(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(LucideIcons.fileText, size: 22, color: color),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(r.title, style: AppText.body(size: 14, weight: FontWeight.w600)),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(r.title, style: AppText.body(size: 14, weight: FontWeight.w600)),
+                              ),
+                              const SizedBox(width: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(r.type, style: AppText.caption(size: 10, color: color)),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: r.color.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
+                          const SizedBox(height: 4),
+                          Text(r.desc, style: AppText.label(size: 12, color: AppColors.muted)),
+                          if (r.url.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              r.url,
+                              style: AppText.caption(size: 10, color: AppColors.muted.withOpacity(0.7)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            child: Text(r.type, style: AppText.caption(size: 10, color: r.color)),
-                          ),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(r.desc, style: AppText.label(size: 12, color: AppColors.muted)),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        )),
+              ),
+            );
+          }),
+
         const SizedBox(height: 4),
         Center(
           child: GestureDetector(
+            onTap: _loadingResources ? null : _loadResources,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(LucideIcons.refreshCw, size: 13, color: AppColors.muted),
+                Icon(
+                  LucideIcons.refreshCw,
+                  size: 13,
+                  color: _loadingResources ? AppColors.muted.withOpacity(0.4) : AppColors.muted,
+                ),
                 const SizedBox(width: 5),
-                Text('重新推薦', style: AppText.label(size: 12)),
+                Text(
+                  '重新推薦',
+                  style: AppText.label(
+                    size: 12,
+                    color: _loadingResources ? AppColors.muted.withOpacity(0.4) : null,
+                  ),
+                ),
               ],
             ),
           ),
