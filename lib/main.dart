@@ -70,6 +70,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
   List<TodoCategory> _categories = [];
   List<Idea> _ideas = [];
   Map<String, String> _notes = {};
+  List<RecapItem> _recapItems = [];
   bool _loaded = false;
   _Overlay _overlay = _Overlay.none;
 
@@ -88,14 +89,16 @@ class _MyRoomShellState extends State<MyRoomShell> {
       db.getIdeas(),
       db.getNotes(),
       db.getCategories(),
+      db.getRecapItems(),
     ]);
     if (!mounted) return;
     setState(() {
-      _events     = results[0] as List<CalendarEvent>;
-      _todos      = results[1] as List<TodoItem>;
-      _ideas      = results[2] as List<Idea>;
-      _notes      = results[3] as Map<String, String>;
-      _categories = results[4] as List<TodoCategory>;
+      _events      = results[0] as List<CalendarEvent>;
+      _todos       = results[1] as List<TodoItem>;
+      _ideas       = results[2] as List<Idea>;
+      _notes       = results[3] as Map<String, String>;
+      _categories  = results[4] as List<TodoCategory>;
+      _recapItems  = results[5] as List<RecapItem>;
       _loaded = true;
     });
   }
@@ -312,7 +315,14 @@ class _MyRoomShellState extends State<MyRoomShell> {
                         ),
                         IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded, onIdeaDeleted: _onIdeaDeleted),
                         NotePage(notes: _notes, onNotesMutated: _onNotesMutated),
-                        RecapPage(onNavTo: (tab) => setState(() => _activeTab = tab)),
+                        RecapPage(
+                          onNavTo: (tab) => setState(() => _activeTab = tab),
+                          todos: _todos,
+                          events: _events,
+                          ideas: _ideas,
+                          notes: _notes,
+                          recapItems: _recapItems,
+                        ),
                       ],
                     ),
                   ),

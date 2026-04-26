@@ -407,6 +407,76 @@ class OpenAIService {
     }
   }
 
+  // ── Era insight ─────────────────────────────────────────────────────────────
+
+  static const _insightSystemPrompt =
+      '你是一個溫暖的個人成長教練。根據使用者的資料，用繁體中文寫 2 到 3 句鼓勵、真誠且具體的話。\n'
+      '語氣要有溫度，避免空泛制式。只回傳純文字，不要其他說明。';
+
+  Future<String?> generateEraInsight(String eraLabel, String dataSummary) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': AppConfig.openAiModel,
+              'messages': [
+                {'role': 'system', 'content': _insightSystemPrompt},
+                {'role': 'user', 'content': '[$eraLabel 回顧]\n$dataSummary'},
+              ],
+              'temperature': 0.78,
+              'max_tokens': 120,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body['choices'][0]['message']['content'] as String?;
+    } catch (e) {
+      debugPrint('generateEraInsight error: $e');
+      return null;
+    }
+  }
+
+  // ── Era image (DALL-E 3) ──────────────────────────────────────────────────
+
+  static const _imageEndpoint = 'https://api.openai.com/v1/images/generations';
+
+  Future<String?> generateEraImage(String prompt) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_imageEndpoint),
+            headers: {
+              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': 'dall-e-3',
+              'prompt': prompt,
+              'n': 1,
+              'size': '1792x1024',
+              'style': 'natural',
+              'quality': 'standard',
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) {
+        debugPrint('DALL-E error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body['data'][0]['url'] as String?;
+    } catch (e) {
+      debugPrint('generateEraImage error: $e');
+      return null;
+    }
+  }
+
   // ── Note category classification ────────────────────────────────────────────
 
   static const _noteCatSystemPrompt =
