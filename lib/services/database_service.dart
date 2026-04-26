@@ -238,10 +238,32 @@ class DatabaseService {
   /// Only seeds if all tables are empty (i.e. fresh install).
   Future<void> seedIfEmpty() async {
     final database = await db;
-    final count = Sqflite.firstIntValue(
+    final todoCount = Sqflite.firstIntValue(
       await database.rawQuery('SELECT COUNT(*) FROM todos'),
     ) ?? 0;
-    if (count == 0) await _seed(database);
+    final eventCount = Sqflite.firstIntValue(
+      await database.rawQuery('SELECT COUNT(*) FROM events'),
+    ) ?? 0;
+    if (todoCount == 0 && eventCount == 0) {
+      await _seed(database);
+    } else if (eventCount == 0) {
+      // Events table was wiped by migration — re-seed events only
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final e in SeedData.initEvents) {
+        await database.insert('events', {
+          'title': e.title,
+          'start_year': e.startYear, 'start_month': e.startMonth,
+          'start_day': e.startDay,   'start_hour': e.startHour, 'start_min': e.startMin,
+          'end_year': e.endYear,     'end_month': e.endMonth,
+          'end_day': e.endDay,       'end_hour': e.endHour,   'end_min': e.endMin,
+          'color': e.color.toARGB32(),
+          'all_day': e.allDay ? 1 : 0,
+          'description': e.description,
+          'location': e.location,
+          'created_at': now,
+        });
+      }
+    }
   }
 
   // ─── TODOS ─────────────────────────────────────────────────────────────────
@@ -353,6 +375,11 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: [e.id],
     );
+  }
+
+  Future<void> deleteEvent(int id) async {
+    final database = await db;
+    await database.delete('events', where: 'id = ?', whereArgs: [id]);
   }
 
   CalendarEvent _rowToEvent(Map<String, dynamic> r) => CalendarEvent(

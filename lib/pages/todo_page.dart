@@ -31,6 +31,7 @@ class TodoPage extends StatefulWidget {
   final List<TodoCategory> categories;
   final ValueChanged<TodoItem> onTodoAdded;
   final ValueChanged<TodoItem> onTodoToggled;
+  final ValueChanged<int> onTodoDeleted;
   final void Function(String name, Color color) onCategoryAdded;
   final ValueChanged<int> onCategoryDeleted;
 
@@ -40,6 +41,7 @@ class TodoPage extends StatefulWidget {
     required this.categories,
     required this.onTodoAdded,
     required this.onTodoToggled,
+    required this.onTodoDeleted,
     required this.onCategoryAdded,
     required this.onCategoryDeleted,
   });
@@ -102,6 +104,10 @@ class _TodoPageState extends State<TodoPage> {
   void _toggleTodo(int id) {
     final todo = widget.todos.firstWhere((t) => t.id == id);
     widget.onTodoToggled(todo.copyWith(done: !todo.done));
+  }
+
+  void _deleteTodo(int id) {
+    widget.onTodoDeleted(id);
   }
 
   void _addTodo() {
@@ -285,8 +291,35 @@ class _TodoPageState extends State<TodoPage> {
             final isDone = t.done;
             return Padding(
               padding: const EdgeInsets.only(bottom: 9),
-              child: MrCard(
-                onTap: () => _toggleTodo(t.id),
+              child: Dismissible(
+                key: ValueKey(t.id),
+                direction: DismissDirection.endToStart,
+                confirmDismiss: (_) => showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('刪除待辦'),
+                    content: Text('確定要刪除「${t.text}」嗎？'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('刪除', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                ),
+                onDismissed: (_) => _deleteTodo(t.id),
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  decoration: BoxDecoration(
+                    color: AppColors.rose,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(LucideIcons.trash2, color: Colors.white, size: 20),
+                ),
+                child: MrCard(
+                  onTap: () => _toggleTodo(t.id),
                 child: Row(
                   children: [
                     // Priority indicator (only for active items)
@@ -357,6 +390,7 @@ class _TodoPageState extends State<TodoPage> {
                   ],
                 ),
               ),
+            ),
             );
           }),
 
