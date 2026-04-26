@@ -7,6 +7,7 @@ import '../config.dart';
 import '../models/recap_item.dart' show Era;
 import '../models/idea.dart' show IdeaLink;
 import '../models/ai_resource.dart';
+import '../models/note_item.dart' show NoteCategory, NoteItem;
 export '../models/recap_item.dart' show Era;
 
 // ─── Classification result types ─────────────────────────────────────────────
@@ -402,6 +403,126 @@ class OpenAIService {
           .toList();
     } catch (e) {
       debugPrint('fetchRecommendations error: $e');
+      return [];
+    }
+  }
+
+  // ── Note category classification ────────────────────────────────────────────
+
+  static const _noteCatSystemPrompt =
+      '你是一個筆記分類引擎。給定一段筆記內容和可用分類清單，'
+      '判斷這則筆記最適合屬於哪個分類。\n\n'
+      '回傳嚴格 JSON（不含其他文字）：{"cat_id":"..."}\n\n'
+      '規則：cat_id 必須是提供清單中的其中一個 id；若都不合適，使用 "undefined"；只回傳 JSON';
+
+  /// Returns the best-matching category id from [categories], or null on error.
+  Future<String?> classifyNoteToCategory(
+    String content,
+    List<NoteCategory> categories,
+  ) async {
+    if (categories.isEmpty) return null;
+    final catList = categories
+        .map((c) => '{"id":"${c.id}","label":"${c.label}"}')
+        .join(', ');
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': AppConfig.openAiModel,
+              'messages': [
+                {'role': 'system', 'content': _noteCatSystemPrompt},
+                {
+                  'role': 'user',
+                  'content': '分類清單：[$catList]\n\n筆記內容：$content',
+                },
+              ],
+              'response_format': {'type': 'json_object'},
+              'temperature': 0.2,
+              'max_tokens': 50,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) return null;
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final j = jsonDecode(
+        body['choices'][0]['message']['content'] as String,
+      ) as Map<String, dynamic>;
+      final catId = j['cat_id'] as String?;
+      if (catId != null && categories.any((c) => c.id == catId)) return catId;
+      return null;
+    } catch (e) {
+      debugPrint('classifyNoteToCategory error: $e');
+      return null;
+    }
+  }
+
+  // ── Batch note re-classification ────────────────────────────────────────────
+
+  static const _batchClassifySystemPrompt =
+      '你是一個筆記分類引擎。給定一個新分類的名稱，以及一組編號筆記，'
+      '判斷哪些筆記適合歸入此分類。\n\n'
+      '回傳嚴格 JSON（不含其他文字）：{"match_ids":[...]}\n\n'
+      '規則：match_ids 為適合歸入該分類的筆記 id 陣列（整數）；'
+      '不適合的不列出；若全不符合回傳空陣列；只回傳 JSON';
+
+  /// Checks each note in [undefinedNotes] against [newCategory] in a single
+  /// API call. Returns the DB ids of notes that fit the new category.
+  Future<List<int>> findNotesMatchingCategory(
+    NoteCategory newCategory,
+    List<NoteItem> undefinedNotes,
+  ) async {
+    if (undefinedNotes.isEmpty) return [];
+    final noteList = undefinedNotes
+        .map((n) => '${n.id}|${n.content.replaceAll('\n', ' ')}')
+        .join('\n');
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': AppConfig.openAiModel,
+              'messages': [
+                {'role': 'system', 'content': _batchClassifySystemPrompt},
+                {
+                  'role': 'user',
+                  'content': '新分類：${newCategory.label}\n\n'
+                      '筆記清單（id|內容）：\n$noteList',
+                },
+              ],
+              'response_format': {'type': 'json_object'},
+              'temperature': 0.2,
+              'max_tokens': 200,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) return [];
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final j = jsonDecode(
+        body['choices'][0]['message']['content'] as String,
+      ) as Map<String, dynamic>;
+      final rawIds = j['match_ids'] as List? ?? [];
+
+      // Only return IDs that actually exist in the provided list (safety check).
+      final validIds = undefinedNotes.map((n) => n.id).toSet();
+      return rawIds
+          .map((id) => (id as num).toInt())
+          .where(validIds.contains)
+          .toList();
+    } catch (e) {
+      debugPrint('findNotesMatchingCategory error: $e');
       return [];
     }
   }

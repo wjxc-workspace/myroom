@@ -6,6 +6,7 @@ import '../models/event.dart';
 import '../models/todo_item.dart';
 import '../models/idea.dart';
 import '../models/ai_resource.dart';
+import '../models/note_item.dart';
 import '../models/recap_item.dart';
 import '../data/seed_data.dart';
 
@@ -99,12 +100,26 @@ class DatabaseService {
       )
     ''');
 
+    // notes: no UNIQUE on date_key — multiple notes per date are allowed
+    // cat_id NULL = primary date note; non-null = categorized note
     await db.execute('''
       CREATE TABLE notes (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        date_key   TEXT    NOT NULL UNIQUE,
+        date_key   TEXT    NOT NULL,
         content    TEXT    NOT NULL,
+        cat_id     TEXT,
         updated_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE note_categories (
+        id         TEXT    PRIMARY KEY,
+        label      TEXT    NOT NULL,
+        icon_name  TEXT    NOT NULL,
+        color_val  INTEGER NOT NULL,
+        bg_val     INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -185,6 +200,7 @@ class DatabaseService {
       await db.insert('notes', {
         'date_key': entry.key,
         'content': entry.value,
+        'cat_id': null,
         'updated_at': now,
       });
     }
@@ -198,6 +214,19 @@ class DatabaseService {
         'desc': r.desc,
         'note_link': r.noteLink,
         'created_at': now,
+      });
+    }
+
+    // Seed default note categories
+    const defaultCats = [
+      ('undefined', '未分類',  'tag',      0xFF9E9E9E, 0xFFF5F0E8, 0),
+      ('diary',     '日記',    'pencil',   0xFFBF7A8E, 0xFFF5EEF0, 1),
+      ('academic',  '學術',    'fileText', 0xFF7A8EBF, 0xFFEEF0F5, 2),
+    ];
+    for (final (id, label, icon, color, bg, order) in defaultCats) {
+      await db.insert('note_categories', {
+        'id': id, 'label': label, 'icon_name': icon,
+        'color_val': color, 'bg_val': bg, 'sort_order': order,
       });
     }
   }
@@ -420,28 +449,161 @@ class DatabaseService {
 
   // ─── NOTES ─────────────────────────────────────────────────────────────────
 
+  /// Returns one content string per date_key (the most recently updated).
+  /// Used by main.dart to drive calendar dot indicators.
   Future<Map<String, String>> getNotes() async {
     final database = await db;
-    final rows = await database.query('notes');
-    return {for (final r in rows) r['date_key'] as String: r['content'] as String};
+    final rows = await database.query('notes', orderBy: 'date_key ASC, updated_at DESC');
+    final result = <String, String>{};
+    for (final r in rows) {
+      final key = r['date_key'] as String;
+      if (!result.containsKey(key)) result[key] = r['content'] as String;
+    }
+    return result;
   }
 
-  Future<void> upsertNote(String dateKey, String content) async {
+  /// Upserts the primary date note (cat_id IS NULL) for [dateKey].
+  /// Returns the note's id, or -1 if the note was deleted (empty content).
+  Future<int> upsertNote(String dateKey, String content) async {
     final database = await db;
+    final existing = await database.query(
+      'notes',
+      where: 'date_key = ? AND cat_id IS NULL',
+      whereArgs: [dateKey],
+      limit: 1,
+    );
     if (content.isEmpty) {
-      await database.delete('notes', where: 'date_key = ?', whereArgs: [dateKey]);
-    } else {
-      await database.insert(
-        'notes',
-        {
-          'date_key': dateKey,
-          'content': content,
-          'updated_at': DateTime.now().millisecondsSinceEpoch,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      if (existing.isNotEmpty) {
+        await database.delete('notes', where: 'id = ?', whereArgs: [existing.first['id']]);
+      }
+      return -1;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (existing.isNotEmpty) {
+      final id = existing.first['id'] as int;
+      await database.update(
+        'notes', {'content': content, 'updated_at': now},
+        where: 'id = ?', whereArgs: [id],
       );
+      return id;
+    } else {
+      return database.insert('notes', {
+        'date_key': dateKey, 'content': content,
+        'cat_id': null, 'updated_at': now,
+      });
     }
   }
+
+  /// Returns the primary date note (cat_id IS NULL) for [dateKey], or null.
+  Future<NoteItem?> getNotePrimary(String dateKey) async {
+    final database = await db;
+    final rows = await database.query(
+      'notes',
+      where: 'date_key = ? AND cat_id IS NULL',
+      whereArgs: [dateKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _rowToNoteItem(rows.first);
+  }
+
+  /// Returns all notes for a category, newest first.
+  Future<List<NoteItem>> getNotesByCategory(String catId) async {
+    final database = await db;
+    final rows = await database.query(
+      'notes',
+      where: 'cat_id = ?',
+      whereArgs: [catId],
+      orderBy: 'updated_at DESC',
+    );
+    return rows.map(_rowToNoteItem).toList();
+  }
+
+  /// Inserts a categorized note (from the 分類 tab). Returns the new id.
+  Future<int> insertCatNote(
+    String dateKey, String content, String catId,
+  ) async {
+    final database = await db;
+    return database.insert('notes', {
+      'date_key': dateKey,
+      'content': content,
+      'cat_id': catId,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  /// Assigns (or clears) the category on an existing note.
+  Future<void> updateNoteCat(int id, String? catId) async {
+    final database = await db;
+    await database.update(
+      'notes', {'cat_id': catId},
+      where: 'id = ?', whereArgs: [id],
+    );
+  }
+
+  /// Returns all notes for a date, oldest first (primary note first, then categorized).
+  Future<List<NoteItem>> getNotesByDate(String dateKey) async {
+    final database = await db;
+    final rows = await database.query(
+      'notes',
+      where: 'date_key = ?',
+      whereArgs: [dateKey],
+      orderBy: 'updated_at ASC',
+    );
+    return rows.map(_rowToNoteItem).toList();
+  }
+
+  /// Deletes any note by id.
+  Future<void> deleteNote(int id) async {
+    final database = await db;
+    await database.delete('notes', where: 'id = ?', whereArgs: [id]);
+  }
+
+  NoteItem _rowToNoteItem(Map<String, dynamic> r) => NoteItem(
+    id: r['id'] as int,
+    dateKey: r['date_key'] as String,
+    content: r['content'] as String,
+    catId: r['cat_id'] as String?,
+    updatedAt: r['updated_at'] as int,
+  );
+
+  // ─── NOTE CATEGORIES ───────────────────────────────────────────────────────
+
+  /// Returns all categories ordered by sort_order.
+  Future<List<NoteCategory>> getNoteCategories() async {
+    final database = await db;
+    final rows = await database.query('note_categories', orderBy: 'sort_order ASC');
+    return rows.map(_rowToCategory).toList();
+  }
+
+  /// Inserts a new user-defined category.
+  Future<void> insertNoteCategory(NoteCategory cat) async {
+    final database = await db;
+    await database.insert('note_categories', {
+      'id': cat.id,
+      'label': cat.label,
+      'icon_name': cat.iconName,
+      'color_val': cat.color.toARGB32(),
+      'bg_val': cat.bg.toARGB32(),
+      'sort_order': cat.sortOrder,
+    });
+  }
+
+  /// Deletes a category and all notes that belong to it.
+  Future<void> deleteNoteCategory(String id) async {
+    final database = await db;
+    await database.delete('notes', where: 'cat_id = ?', whereArgs: [id]);
+    await database.delete('note_categories', where: 'id = ?', whereArgs: [id]);
+  }
+
+  NoteCategory _rowToCategory(Map<String, dynamic> r) => NoteCategory(
+    id: r['id'] as String,
+    label: r['label'] as String,
+    iconName: r['icon_name'] as String,
+    color: Color(r['color_val'] as int),
+    bg: Color(r['bg_val'] as int),
+    sortOrder: r['sort_order'] as int,
+  );
 
   // ─── RECAP ─────────────────────────────────────────────────────────────────
 
@@ -505,7 +667,8 @@ class DatabaseService {
 
   // ─── CONTEXT SUMMARY (for AI chat) ─────────────────────────────────────────
 
-  /// Returns notes updated within the last [days] days, newest first.
+  /// Returns notes updated within the last [days] days, newest first,
+  /// deduplicated to one entry per date_key.
   Future<Map<String, String>> getRecentNotes({int days = 7}) async {
     final database = await db;
     final cutoff = DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
@@ -513,9 +676,14 @@ class DatabaseService {
       'notes',
       where: 'updated_at >= ?',
       whereArgs: [cutoff],
-      orderBy: 'date_key DESC',
+      orderBy: 'date_key DESC, updated_at DESC',
     );
-    return {for (final r in rows) r['date_key'] as String: r['content'] as String};
+    final result = <String, String>{};
+    for (final r in rows) {
+      final key = r['date_key'] as String;
+      if (!result.containsKey(key)) result[key] = r['content'] as String;
+    }
+    return result;
   }
 
   /// Returns only now/future recap items (past items excluded from AI context).
