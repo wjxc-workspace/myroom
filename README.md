@@ -11,7 +11,7 @@ A personal productivity app built with Flutter. MyRoom combines a calendar, to-d
 | **行事曆** Calendar | Weekly timeline view. Add events with specific times. |
 | **待辦** To-Do | Task list with categories (工作, 學習, 個人, 健康) and a progress ring. |
 | **靈感** Ideas | Expandable idea cards with AI-generated summaries and resource links. Pinnable AI resource recommendations. |
-| **筆記** Notes | Date-based and category-based note editor with a calendar picker. |
+| **筆記** Notes | Date-based notes with a full-year calendar; category-based notes with user-created categories; AI auto-classification. |
 | **回顧** Recap | Past / present / future goal tracking with a visual timeline. |
 
 **AI overlay (Ask AI)**
@@ -25,6 +25,10 @@ A personal productivity app built with Flutter. MyRoom combines a calendar, to-d
 **Idea page (靈感)**
 - **紀錄靈感 tab** — Each new idea is immediately saved, then enriched by GPT (one-sentence core insight + 2–3 resource links). Tap a card to expand the AI panel. Links open in the system browser. Cards can be individually deleted (synced to DB).
 - **探索資源 tab** — On page load (or "重新推薦" tap), the app sends your top 5 ideas to GPT and gets back 4–6 curated learning resources. Resources can be pinned; pinned items persist across sessions in their own DB table and appear at the top of the list.
+
+**Note page (筆記)**
+- **日期 tab** — Full-year calendar with month navigation and dot indicators on days that have notes. Tap a day to open a panel with a primary note editor (auto-saves on every keystroke). Eraser button clears both the text field and the DB row. Multiple notes can be added to one day via the "新增筆記" button with a category picker. All notes for the selected day are shown below the editor, expandable and individually deletable. Closing the panel (save icon) triggers background AI classification of the primary note into one of the user's categories.
+- **分類 tab** — Category grid showing note count per category. Tap a category to see its notes in a scrollable list; notes are expandable and deletable. "新增筆記" adds a manually written note to the category. The trash icon on a category card prompts for confirmation then deletes the category and all its notes. "新增分類" opens a dialog to name the category and pick from 7 icons; colour is auto-assigned from a palette. After a new category is saved, GPT silently checks every 未分類 note in one batch call and moves any matches into the new category.
 
 ---
 
@@ -87,11 +91,12 @@ lib/
 │   ├── todo_item.dart        # TodoItem
 │   ├── idea.dart             # Idea + IdeaLink
 │   ├── ai_resource.dart      # AiResource (explore-tab recommendations)
+│   ├── note_item.dart        # NoteItem + NoteCategory
 │   └── recap_item.dart       # RecapItem + Era enum
 │
 ├── services/
 │   ├── database_service.dart # SQLite singleton — all reads/writes
-│   └── openai_service.dart   # OpenAI REST client — classify, chat, enrich, recommend
+│   └── openai_service.dart   # OpenAI REST client — classify, chat, enrich, recommend, classify-note, batch-reclassify
 │
 ├── data/
 │   └── seed_data.dart        # Sample data inserted on first launch
@@ -120,7 +125,7 @@ lib/
 
 ### State management
 
-State lives in `MyRoomShell` (`main.dart`) and is passed down as immutable lists / maps. Pages fire fine-grained callbacks (`onTodoAdded`, `onTodoToggled`, `onEventAdded`, `onIdeaAdded`, `onIdeaDeleted`, `onNoteSaved`); the shell writes to SQLite and re-fetches the affected list, then calls `setState`. No external state-management library is used.
+State lives in `MyRoomShell` (`main.dart`) and is passed down as immutable lists / maps. Pages fire fine-grained callbacks (`onTodoAdded`, `onTodoToggled`, `onEventAdded`, `onIdeaAdded`, `onIdeaDeleted`, `onNotesMutated`); the shell re-fetches the affected list from SQLite and calls `setState`. `NotePage` is an exception — it writes directly to the DB and only calls `onNotesMutated` so the shell can refresh the `_notes` dot-indicator map. No external state-management library is used.
 
 ### Persistence
 
@@ -133,7 +138,8 @@ State lives in `MyRoomShell` (`main.dart`) and is passed down as immutable lists
 | `todos` | Tasks with category, color, done flag |
 | `events` | Calendar events with start/end day and time |
 | `ideas` | User ideas with optional `ai_summary` and `links` JSON columns |
-| `notes` | Date-keyed journal entries (UNIQUE on `date_key`) |
+| `notes` | Notes with `date_key`, `title`, `content`, and nullable `cat_id` (`NULL` = primary date note; `'undefined'` = unclassified). Multiple rows per `date_key` are allowed. |
+| `note_categories` | User-created note categories with label, icon name, colour, and sort order. Four defaults are seeded on first launch. |
 | `recap_items` | Past / present / future milestones |
 | `chat_messages` | Persisted AI chat history |
 | `pinned_resources` | User-pinned explore resources (UNIQUE on `url`) |
@@ -149,7 +155,7 @@ if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
 
 ### AI integration
 
-`OpenAIService` is a singleton making direct HTTPS calls to the OpenAI Chat Completions endpoint via the `http` package. It exposes four operations:
+`OpenAIService` is a singleton making direct HTTPS calls to the OpenAI Chat Completions endpoint via the `http` package. It exposes six operations:
 
 | Method | Temp | Tokens | Purpose |
 |--------|------|--------|---------|
@@ -157,6 +163,8 @@ if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
 | `chat` | 0.7 | 600 | Conversational assistant with live DB context |
 | `enrichIdea` | 0.5 | 300 | One-sentence insight + 2–3 links per idea |
 | `fetchRecommendations` | 0.6 | 600 | 4–6 curated resources from top-5 ideas |
+| `classifyNoteToCategory` | 0.2 | 50 | Assigns a single date note to the best-matching category when the day panel is closed |
+| `findNotesMatchingCategory` | 0.2 | 200 | Batch-checks all 未分類 notes against a newly created category in one API call; returns matched note IDs |
 
 All methods using structured output pass `response_format: {"type": "json_object"}` for deterministic parsing.
 

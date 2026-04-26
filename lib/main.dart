@@ -9,7 +9,7 @@ import 'models/event.dart';
 import 'models/todo_item.dart';
 import 'models/idea.dart';
 import 'models/recap_item.dart';
-import 'data/seed_data.dart' show kCatColors, todayKey;
+import 'data/seed_data.dart' show kCatColors, kDow, todayKey;
 import 'services/database_service.dart';
 import 'services/openai_service.dart';
 import 'widgets/mr_icon_button.dart';
@@ -157,8 +157,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
     if (mounted) setState(() => _ideas = updated);
   }
 
-  void _onNoteSaved(String dateKey, String content) async {
-    await DatabaseService.instance.upsertNote(dateKey, content);
+  Future<void> _onNotesMutated() async {
     final updated = await DatabaseService.instance.getNotes();
     if (mounted) setState(() => _notes = updated);
   }
@@ -267,7 +266,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
         children: [
           Text(_pageTitles[_activeTab], style: AppText.display()),
           const SizedBox(height: 3),
-          Text('2026年4月24日，星期五', style: AppText.caption()),
+          Text('${DateTime.now().year}年${DateTime.now().month}月${DateTime.now().day}日，星期${kDow[DateTime.now().weekday % 7]}', style: AppText.caption()),
         ],
       ),
     );
@@ -312,7 +311,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
                           onCategoryDeleted: _onCategoryDeleted,
                         ),
                         IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded, onIdeaDeleted: _onIdeaDeleted),
-                        NotePage(notes: _notes, onNoteSaved: _onNoteSaved),
+                        NotePage(notes: _notes, onNotesMutated: _onNotesMutated),
                         RecapPage(onNavTo: (tab) => setState(() => _activeTab = tab)),
                       ],
                     ),
