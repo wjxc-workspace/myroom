@@ -75,12 +75,12 @@ const kResources = [
 
 class SeedData {
   static List<CalendarEvent> get initEvents => [
-    const CalendarEvent(id: 1, title: '週組會議', startDay: 24, startHour: 9, startMin: 0, endDay: 24, endHour: 10, endMin: 0, color: AppColors.sage),
-    const CalendarEvent(id: 2, title: '英文課', startDay: 24, startHour: 14, startMin: 0, endDay: 24, endHour: 15, endMin: 30, color: AppColors.amber),
-    const CalendarEvent(id: 3, title: '讀書計畫', startDay: 25, startHour: 20, startMin: 0, endDay: 25, endHour: 21, endMin: 0, color: AppColors.blue),
-    const CalendarEvent(id: 4, title: '健身房', startDay: 26, startHour: 7, startMin: 30, endDay: 26, endHour: 8, endMin: 30, color: AppColors.rose),
-    const CalendarEvent(id: 5, title: '專案截止', startDay: 28, startHour: 18, startMin: 0, endDay: 28, endHour: 18, endMin: 30, color: AppColors.amber),
-    const CalendarEvent(id: 6, title: '團隊活動', startDay: 22, startHour: 0, startMin: 0, endDay: 24, endHour: 23, endMin: 59, color: AppColors.blue, allDay: true),
+    const CalendarEvent(id: 1, title: '週組會議', startYear: 2026, startMonth: 4, startDay: 24, startHour: 9, startMin: 0, endYear: 2026, endMonth: 4, endDay: 24, endHour: 10, endMin: 0, color: AppColors.sage),
+    const CalendarEvent(id: 2, title: '英文課', startYear: 2026, startMonth: 4, startDay: 24, startHour: 14, startMin: 0, endYear: 2026, endMonth: 4, endDay: 24, endHour: 15, endMin: 30, color: AppColors.amber),
+    const CalendarEvent(id: 3, title: '讀書計畫', startYear: 2026, startMonth: 4, startDay: 25, startHour: 20, startMin: 0, endYear: 2026, endMonth: 4, endDay: 25, endHour: 21, endMin: 0, color: AppColors.blue),
+    const CalendarEvent(id: 4, title: '健身房', startYear: 2026, startMonth: 4, startDay: 26, startHour: 7, startMin: 30, endYear: 2026, endMonth: 4, endDay: 26, endHour: 8, endMin: 30, color: AppColors.rose),
+    const CalendarEvent(id: 5, title: '專案截止', startYear: 2026, startMonth: 4, startDay: 28, startHour: 18, startMin: 0, endYear: 2026, endMonth: 4, endDay: 28, endHour: 18, endMin: 30, color: AppColors.amber),
+    const CalendarEvent(id: 6, title: '團隊活動', startYear: 2026, startMonth: 4, startDay: 22, startHour: 0, startMin: 0, endYear: 2026, endMonth: 4, endDay: 24, endHour: 23, endMin: 59, color: AppColors.blue, allDay: true),
   ];
 
   static List<TodoItem> get initTodos => [

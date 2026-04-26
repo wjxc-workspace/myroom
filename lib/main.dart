@@ -116,6 +116,12 @@ class _MyRoomShellState extends State<MyRoomShell> {
     if (mounted) setState(() => _todos = updated);
   }
 
+  void _onTodoDeleted(int id) async {
+    await DatabaseService.instance.deleteTodo(id);
+    final updated = await DatabaseService.instance.getTodos();
+    if (mounted) setState(() => _todos = updated);
+  }
+
   void _onCategoryAdded(String name, Color color) async {
     await DatabaseService.instance.insertCategory(name, color);
     final updated = await DatabaseService.instance.getCategories();
@@ -130,6 +136,12 @@ class _MyRoomShellState extends State<MyRoomShell> {
 
   void _onEventAdded(CalendarEvent e) async {
     await DatabaseService.instance.insertEvent(e);
+    final updated = await DatabaseService.instance.getEvents();
+    if (mounted) setState(() => _events = updated);
+  }
+
+  void _onEventDeleted(int id) async {
+    await DatabaseService.instance.deleteEvent(id);
     final updated = await DatabaseService.instance.getEvents();
     if (mounted) setState(() => _events = updated);
   }
@@ -311,12 +323,13 @@ class _MyRoomShellState extends State<MyRoomShell> {
                     child: IndexedStack(
                       index: _activeTab,
                       children: [
-                        CalendarPage(events: _events, onEventAdded: _onEventAdded),
+                        CalendarPage(events: _events, onEventAdded: _onEventAdded, onEventDeleted: _onEventDeleted),
                         TodoPage(
                           todos: _todos,
                           categories: _categories,
                           onTodoAdded: _onTodoAdded,
                           onTodoToggled: _onTodoToggled,
+                          onTodoDeleted: _onTodoDeleted,
                           onCategoryAdded: _onCategoryAdded,
                           onCategoryDeleted: _onCategoryDeleted,
                         ),

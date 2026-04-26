@@ -13,11 +13,13 @@ const int kHourH = 56;
 class CalendarPage extends StatefulWidget {
   final List<CalendarEvent> events;
   final ValueChanged<CalendarEvent> onEventAdded;
+  final ValueChanged<int> onEventDeleted;
 
   const CalendarPage({
     super.key,
     required this.events,
     required this.onEventAdded,
+    required this.onEventDeleted,
   });
 
   @override
@@ -55,10 +57,7 @@ class _CalendarPageState extends State<CalendarPage> {
       case CalendarView.week:
         final ws = _weekStart;
         final we = ws.add(const Duration(days: 6));
-        if (ws.month == we.month) {
-          return '${ws.year}年${kMonthNames[ws.month - 1]} ${ws.day}–${we.day}日';
-        }
-        return '${kMonthNames[ws.month - 1]}${ws.day}–${kMonthNames[we.month - 1]}${we.day}日';
+        return '${ws.month}/${ws.day}–${we.month}/${we.day}';
       case CalendarView.day:
         return '${_focusDate.year}年${kMonthNames[_focusDate.month - 1]}${_focusDate.day}日';
     }
@@ -236,7 +235,13 @@ class _CalendarPageState extends State<CalendarPage> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _EventDetailSheet(event: e),
+      builder: (_) => _EventDetailSheet(
+        event: e,
+        onDelete: (id) {
+          Navigator.pop(context);
+          widget.onEventDeleted(id);
+        },
+      ),
     );
   }
 }
@@ -401,45 +406,49 @@ class _WeekView extends StatelessWidget {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 54, right: 20),
-          child: Row(
-            children: days.map((d) {
+        Row(
+          children: [
+            const SizedBox(width: 44),
+            ...days.map((d) {
               final isToday = d.year == today.year && d.month == today.month && d.day == today.day;
               final dow = kDow[d.weekday % 7];
+              final isPast = d.isBefore(DateTime(today.year, today.month, today.day));
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => onDayTap(d),
-                  child: Column(
-                    children: [
-                      Text(dow, style: AppText.caption(size: 9, color: AppColors.muted)),
-                      const SizedBox(height: 2),
-                      Container(
-                        width: 26, height: 26,
-                        decoration: isToday
-                            ? const BoxDecoration(color: AppColors.dark, shape: BoxShape.circle)
-                            : null,
-                        child: Center(
-                          child: Text(
-                            '${d.day}',
-                            style: AppText.body(
-                              size: 12,
-                              weight: isToday ? FontWeight.w700 : FontWeight.w400,
-                              color: isToday
-                                  ? Colors.white
-                                  : d.isBefore(DateTime(today.year, today.month, today.day))
-                                      ? AppColors.muted
-                                      : AppColors.dark,
+                      onTap: () => onDayTap(d),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(dow,
+                            style: AppText.caption(size: 9, color: AppColors.muted),
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 3),
+                          Container(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            decoration: isToday
+                                ? BoxDecoration(color: AppColors.dark, borderRadius: BorderRadius.circular(8))
+                                : null,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '${d.month}/${d.day}',
+                                style: AppText.caption(
+                                  size: 10,
+                                  weight: isToday ? FontWeight.w700 : FontWeight.w400,
+                                  color: isToday ? Colors.white : isPast ? AppColors.muted : AppColors.dark,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
+                    ),
+                  );
+                }),
+          ],
         ),
         if (allDayEvts.any((e) => days.any((d) => eventIsOnDay(e, d))))
           Container(
@@ -474,9 +483,7 @@ class _WeekView extends StatelessWidget {
           ),
         const SizedBox(height: 6),
         Expanded(
-          child: LayoutBuilder(builder: (context, constraints) {
-            final colW = (constraints.maxWidth - 44) / 7;
-            return SingleChildScrollView(
+          child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 100),
               child: Padding(
                 padding: const EdgeInsets.only(left: 0, right: 0),
@@ -503,7 +510,8 @@ class _WeekView extends StatelessWidget {
                       ),
                       ...days.map((d) {
                         final dayTimed = timedEvts.where((e) => eventIsOnDay(e, d)).toList();
-                        return GestureDetector(
+                        return Expanded(
+                          child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTapDown: (details) {
                             final tapH = details.localPosition.dy / kHourH;
@@ -512,8 +520,6 @@ class _WeekView extends StatelessWidget {
                             final snappedMinute = (minute ~/ 15) * 15;
                             onTimeTap(DateTime(d.year, d.month, d.day, hour, snappedMinute));
                           },
-                          child: SizedBox(
-                          width: colW,
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
@@ -559,8 +565,7 @@ class _WeekView extends StatelessWidget {
                   ),
                 ),
               ),
-            );
-          }),
+          ),
         ),
       ],
     );
@@ -983,7 +988,8 @@ class _DayEventsSheet extends StatelessWidget {
 
 class _EventDetailSheet extends StatelessWidget {
   final CalendarEvent event;
-  const _EventDetailSheet({required this.event});
+  final ValueChanged<int> onDelete;
+  const _EventDetailSheet({required this.event, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -1001,6 +1007,26 @@ class _EventDetailSheet extends StatelessWidget {
             Container(width: 12, height: 12, decoration: BoxDecoration(color: event.color, shape: BoxShape.circle)),
             const SizedBox(width: 10),
             Expanded(child: Text(event.title, style: AppText.body(size: 18, weight: FontWeight.w600))),
+            GestureDetector(
+              onTap: () => showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('刪除行程'),
+                  content: Text('確定要刪除「${event.title}」嗎？'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+                    TextButton(
+                      onPressed: () { Navigator.pop(ctx); onDelete(event.id); },
+                      child: const Text('刪除', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(LucideIcons.trash2, size: 18, color: AppColors.muted),
+              ),
+            ),
           ]),
           const SizedBox(height: 16),
           if (!event.allDay)
