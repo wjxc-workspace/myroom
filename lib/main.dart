@@ -19,6 +19,7 @@ import 'pages/todo_page.dart';
 import 'pages/idea_page.dart';
 import 'pages/note_page.dart';
 import 'pages/recap_page.dart';
+import 'pages/setting_page.dart';
 import 'overlays/add_overlay.dart';
 import 'overlays/ai_chat_overlay.dart';
 
@@ -252,7 +253,13 @@ class _MyRoomShellState extends State<MyRoomShell> {
                 onTap: () => setState(() => _overlay = _Overlay.ai),
               ),
               const SizedBox(width: 7),
-              MrIconButton(icon: LucideIcons.user, iconSize: 16),
+              MrIconButton(
+                icon: LucideIcons.user,
+                iconSize: 16,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingPage()),
+                ),
+              ),
             ],
           ),
         ],

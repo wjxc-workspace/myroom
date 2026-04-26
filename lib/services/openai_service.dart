@@ -241,15 +241,21 @@ class OpenAIService {
 
   Future<String> chat(
     List<Map<String, String>> history,
-    String contextSummary,
-  ) async {
+    String contextSummary, {
+    String selfIntro = '',
+    String aiInstructions = '',
+  }) async {
     assert(
       AppConfig.openAiApiKey != 'sk-YOUR_KEY_HERE',
       'Please set your OpenAI API key in lib/config.dart',
     );
 
-    final systemMsg = '你是 MyRoom 個人助理。以下是使用者的完整資料：\n\n$contextSummary\n\n'
-        '請用繁體中文回答，語氣簡潔友善。回答盡量不超過 150 字，除非需要列表。';
+    final buf = StringBuffer();
+    buf.write('你是 MyRoom 個人助理。以下是使用者的完整資料：\n\n$contextSummary\n\n');
+    if (selfIntro.isNotEmpty) buf.write('【關於使用者】$selfIntro\n\n');
+    if (aiInstructions.isNotEmpty) buf.write('【回覆指示】$aiInstructions\n\n');
+    buf.write('請用繁體中文回答，語氣簡潔友善。回答盡量不超過 150 字，除非需要列表。');
+    final systemMsg = buf.toString();
 
     final messages = [
       {'role': 'system', 'content': systemMsg},

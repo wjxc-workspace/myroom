@@ -40,11 +40,7 @@ class DatabaseService {
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
     final fullPath = join(dbPath, 'myroom.db');
-    return openDatabase(
-      fullPath,
-      version: 2,
-      onCreate: _onCreate,
-    );
+    return openDatabase(fullPath, version: 1, onCreate: _onCreate);
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -153,6 +149,14 @@ class DatabaseService {
         desc      TEXT    NOT NULL,
         url       TEXT    NOT NULL UNIQUE,
         pinned_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE user_profile (
+        id              INTEGER PRIMARY KEY DEFAULT 1,
+        self_intro      TEXT    NOT NULL DEFAULT '',
+        ai_instructions TEXT    NOT NULL DEFAULT ''
       )
     ''');
 
@@ -695,6 +699,32 @@ class DatabaseService {
       orderBy: 'created_at ASC',
     );
     return rows.map(_rowToRecap).toList();
+  }
+
+  // ─── USER PROFILE ──────────────────────────────────────────────────────────
+
+  Future<({String selfIntro, String aiInstructions})> getUserProfile() async {
+    final database = await db;
+    final rows = await database.query(
+      'user_profile',
+      where: 'id = ?',
+      whereArgs: [1],
+      limit: 1,
+    );
+    if (rows.isEmpty) return (selfIntro: '', aiInstructions: '');
+    return (
+      selfIntro: rows.first['self_intro'] as String? ?? '',
+      aiInstructions: rows.first['ai_instructions'] as String? ?? '',
+    );
+  }
+
+  Future<void> saveUserProfile(String selfIntro, String aiInstructions) async {
+    final database = await db;
+    await database.insert(
+      'user_profile',
+      {'id': 1, 'self_intro': selfIntro, 'ai_instructions': aiInstructions},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<String> buildContextSummary() async {

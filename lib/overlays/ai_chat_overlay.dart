@@ -31,6 +31,8 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
   final _scrollCtrl = ScrollController();
   bool _loading = false;
   bool _historyLoaded = false;
+  String _selfIntro = '';
+  String _aiInstructions = '';
 
   static const _greeting = '✦ 你好！我是你的個人助理。你可以問我今天的優先事項、週計畫，或讓我幫你整理靈感。';
   static const _suggestions = ['今天優先做什麼？', '幫我整理本週重點', '我的靈感有什麼共同主題？', '給我一個明天的計畫'];
@@ -54,8 +56,13 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
   }
 
   Future<void> _loadHistory() async {
-    final saved = await DatabaseService.instance.getChatMessages(limit: 60);
+    final (saved, profile) = await (
+      DatabaseService.instance.getChatMessages(limit: 60),
+      DatabaseService.instance.getUserProfile(),
+    ).wait;
     if (!mounted) return;
+    _selfIntro = profile.selfIntro;
+    _aiInstructions = profile.aiInstructions;
     if (saved.isEmpty) {
       setState(() {
         _msgs.add(const _ChatMsg(isUser: false, text: _greeting));
@@ -66,7 +73,6 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
         _msgs.addAll(saved.map((m) => _ChatMsg(isUser: m.isUser, text: m.text)));
         _historyLoaded = true;
       });
-      // Scroll to bottom after history loads
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     }
   }
@@ -129,7 +135,11 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
     ];
 
     final context = await DatabaseService.instance.buildContextSummary();
-    final reply   = await OpenAIService.instance.chat(history, context);
+    final reply   = await OpenAIService.instance.chat(
+      history, context,
+      selfIntro: _selfIntro,
+      aiInstructions: _aiInstructions,
+    );
 
     if (!mounted) return;
 
