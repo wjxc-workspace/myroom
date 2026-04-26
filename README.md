@@ -8,8 +8,8 @@ A personal productivity app built with Flutter. MyRoom combines a calendar, to-d
 
 | Tab | Description |
 |-----|-------------|
-| **行事曆** Calendar | Weekly timeline view. Add events with specific times. |
-| **待辦** To-Do | Task list with categories (工作, 學習, 個人, 健康) and a progress ring. |
+| **行事曆** Calendar | Month / week / day views. Add, view, and **delete** events. Week view uses `Expanded` columns to avoid overflow on any screen width. |
+| **待辦** To-Do | Task list with custom categories, priority sorting (1–4), done-task toggle, and **swipe-left to delete** with a confirm dialog. |
 | **靈感** Ideas | Expandable idea cards with AI-generated summaries and resource links. Pinnable AI resource recommendations. |
 | **筆記** Notes | Date-based notes with a full-year calendar; category-based notes with user-created categories; AI auto-classification. |
 | **回顧** Recap | Past / present / future goal tracking with a visual timeline. |
@@ -125,18 +125,19 @@ lib/
 
 ### State management
 
-State lives in `MyRoomShell` (`main.dart`) and is passed down as immutable lists / maps. Pages fire fine-grained callbacks (`onTodoAdded`, `onTodoToggled`, `onEventAdded`, `onIdeaAdded`, `onIdeaDeleted`, `onNotesMutated`); the shell re-fetches the affected list from SQLite and calls `setState`. `NotePage` is an exception — it writes directly to the DB and only calls `onNotesMutated` so the shell can refresh the `_notes` dot-indicator map. No external state-management library is used.
+State lives in `MyRoomShell` (`main.dart`) and is passed down as immutable lists / maps. Pages fire fine-grained callbacks (`onTodoAdded`, `onTodoToggled`, `onTodoDeleted`, `onEventAdded`, `onEventDeleted`, `onIdeaAdded`, `onIdeaDeleted`, `onNotesMutated`); the shell re-fetches the affected list from SQLite and calls `setState`. `NotePage` is an exception — it writes directly to the DB and only calls `onNotesMutated` so the shell can refresh the `_notes` dot-indicator map. No external state-management library is used.
 
 ### Persistence
 
-`DatabaseService` is a lazy singleton wrapping `sqflite`. All tables are created together in `_onCreate` (schema version 1) — there is no migration path. The DB file lives at the path returned by `getDatabasesPath()`. On cold start, `seedIfEmpty()` checks whether the `todos` table is empty and inserts sample rows only on the very first run.
+`DatabaseService` is a lazy singleton wrapping `sqflite`. All tables are created together in `_onCreate` (schema **version 1**) — there is no `_onUpgrade` handler; the schema is fully defined in `_onCreate`. The DB file lives at the path returned by `getDatabasesPath()`. On cold start, `seedIfEmpty()` checks whether **both** the `todos` and `events` tables are empty: if both are empty it seeds everything; if only `events` is empty (e.g. after a migration wiped the table) it re-seeds events only, leaving existing todos intact.
 
 **Tables:**
 
 | Table | Purpose |
 |-------|---------|
-| `todos` | Tasks with category, color, done flag |
-| `events` | Calendar events with start/end day and time |
+| `todos` | Tasks with category, color, done flag, `priority` (1 = highest … 4 = lowest), and `created_at` timestamp |
+| `categories` | User-defined todo categories with `name` (UNIQUE) and `color` |
+| `events` | Calendar events with full date fields: `start_year`, `start_month`, `start_day`, `start_hour`, `start_min`, `end_year`, `end_month`, `end_day`, `end_hour`, `end_min` |
 | `ideas` | User ideas with optional `ai_summary` and `links` JSON columns |
 | `notes` | Notes with `date_key`, `title`, `content`, and nullable `cat_id` (`NULL` = primary date note; `'undefined'` = unclassified). Multiple rows per `date_key` are allowed. |
 | `note_categories` | User-created note categories with label, icon name, colour, and sort order. Four defaults are seeded on first launch. |
@@ -210,4 +211,7 @@ ClassificationResult
 
 - `lib/config.dart` is listed in `.gitignore`. If you clone the repo for the first time the file will not exist — create it manually as shown in the installation steps above.
 - All UI copy is in Traditional Chinese (繁體中文); AI responses are also in Chinese.
-- The database has no migration path. If the schema needs to change in a future version, delete the DB file (located at the path printed by `getDatabasesPath()`) and relaunch to trigger a fresh `_onCreate`.
+- The `todos` table has `priority INTEGER NOT NULL DEFAULT 3` and `created_at INTEGER NOT NULL` columns. The `categories` table stores custom todo categories.
+- The `events` table stores full year/month fields (`start_year`, `start_month`, `end_year`, `end_month`) so events can span across different months and years correctly.
+- **Delete support**: calendar events have a trash icon in their detail sheet (confirm dialog before delete); todo items support swipe-left (confirm dialog before delete). Both sync to SQLite immediately via `deleteEvent(id)` and `deleteTodo(id)`.
+- The database schema is version 3. If you have an older DB file, delete it (located at the path printed by `getDatabasesPath()`) and relaunch to trigger a fresh `_onCreate`.
