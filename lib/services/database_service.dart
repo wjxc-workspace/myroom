@@ -296,9 +296,9 @@ class DatabaseService {
     );
   }
 
-  Future<void> deleteTodo(int id) async {
+  Future<int> deleteTodo(int id) async {
     final database = await db;
-    await database.delete('todos', where: 'id = ?', whereArgs: [id]);
+    return database.delete('todos', where: 'id = ?', whereArgs: [id]);
   }
 
   TodoItem _rowToTodo(Map<String, dynamic> r) => TodoItem(
@@ -357,6 +357,11 @@ class DatabaseService {
     });
   }
 
+  Future<int> deleteEvent(int id) async {
+    final database = await db;
+    return database.delete('events', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> updateEvent(CalendarEvent e) async {
     final database = await db;
     await database.update(
@@ -375,11 +380,6 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: [e.id],
     );
-  }
-
-  Future<void> deleteEvent(int id) async {
-    final database = await db;
-    await database.delete('events', where: 'id = ?', whereArgs: [id]);
   }
 
   CalendarEvent _rowToEvent(Map<String, dynamic> r) => CalendarEvent(
@@ -440,9 +440,9 @@ class DatabaseService {
     });
   }
 
-  Future<void> deleteIdea(int id) async {
+  Future<int> deleteIdea(int id) async {
     final database = await db;
-    await database.delete('ideas', where: 'id = ?', whereArgs: [id]);
+    return database.delete('ideas', where: 'id = ?', whereArgs: [id]);
   }
 
   // ─── PINNED RESOURCES ──────────────────────────────────────────────────────
@@ -584,10 +584,19 @@ class DatabaseService {
     return rows.map(_rowToNoteItem).toList();
   }
 
-  /// Deletes any note by id.
-  Future<void> deleteNote(int id) async {
+  /// Returns true if a note with [id] exists.
+  Future<bool> noteExists(int id) async {
     final database = await db;
-    await database.delete('notes', where: 'id = ?', whereArgs: [id]);
+    final count = Sqflite.firstIntValue(
+      await database.rawQuery('SELECT COUNT(*) FROM notes WHERE id=?', [id]),
+    ) ?? 0;
+    return count > 0;
+  }
+
+  /// Deletes any note by id. Returns the number of rows deleted.
+  Future<int> deleteNote(int id) async {
+    final database = await db;
+    return database.delete('notes', where: 'id = ?', whereArgs: [id]);
   }
 
   NoteItem _rowToNoteItem(Map<String, dynamic> r) => NoteItem(
@@ -754,23 +763,37 @@ class DatabaseService {
     );
   }
 
+  /// Returns recent notes as NoteItems (with IDs) for the context summary.
+  Future<List<NoteItem>> getRecentNoteItems({int days = 7}) async {
+    final database = await db;
+    final cutoff = DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
+    final rows = await database.query(
+      'notes',
+      where: 'updated_at >= ?',
+      whereArgs: [cutoff],
+      orderBy: 'date_key DESC, updated_at DESC',
+    );
+    final seen = <String>{};
+    final result = <NoteItem>[];
+    for (final r in rows) {
+      final key = r['date_key'] as String;
+      if (seen.add(key)) result.add(_rowToNoteItem(r));
+    }
+    return result;
+  }
+
   Future<String> buildContextSummary() async {
-    final results = await Future.wait([
+    final (todos, events, noteItems, ideas, goals) = await (
       getTodos(),
       getEvents(),
-      getRecentNotes(),
+      getRecentNoteItems(),
       getIdeas(),
       getActiveRecapItems(),
-    ]);
-
-    final todos  = results[0] as List<TodoItem>;
-    final events = results[1] as List<CalendarEvent>;
-    final notes  = results[2] as Map<String, String>;
-    final ideas  = results[3] as List<Idea>;
-    final goals  = results[4] as List<RecapItem>;
+    ).wait;
 
     final buf = StringBuffer();
     buf.writeln('現在日期：${todayKey()}');
+    buf.writeln('（以下清單中 id= 為資料庫 id，可用於刪除或修改操作）');
     buf.writeln();
 
     buf.writeln('【待辦事項】');
@@ -778,7 +801,7 @@ class DatabaseService {
       buf.writeln('（無待辦）');
     } else {
       for (final t in todos) {
-        buf.writeln('- [${t.done ? '✓' : '✗'}] ${t.text}（${t.cat}）');
+        buf.writeln('- [${t.done ? '✓' : '✗'}][id=${t.id}] ${t.text}（${t.cat}）');
       }
     }
     buf.writeln();
@@ -789,23 +812,21 @@ class DatabaseService {
     } else {
       for (final e in events) {
         if (e.allDay) {
-          buf.writeln('- [全天] ${e.title}（${e.startYear}/${e.startMonth}/${e.startDay}–${e.endYear}/${e.endMonth}/${e.endDay}）');
+          buf.writeln('- [id=${e.id}][全天] ${e.title}（${e.startYear}/${e.startMonth}/${e.startDay}–${e.endYear}/${e.endMonth}/${e.endDay}）');
         } else {
-          buf.writeln('- ${e.startYear}/${e.startMonth}/${e.startDay} ${fmtHm(e.startHour, e.startMin)}–${fmtHm(e.endHour, e.endMin)}：${e.title}');
+          buf.writeln('- [id=${e.id}] ${e.startYear}/${e.startMonth}/${e.startDay} ${fmtHm(e.startHour, e.startMin)}–${fmtHm(e.endHour, e.endMin)}：${e.title}');
         }
       }
     }
     buf.writeln();
 
     buf.writeln('【最近筆記（最近 7 天）】');
-    if (notes.isEmpty) {
+    if (noteItems.isEmpty) {
       buf.writeln('（無近期筆記）');
     } else {
-      for (final entry in notes.entries) {
-        final preview = entry.value.length > 60
-            ? '${entry.value.substring(0, 60)}…'
-            : entry.value;
-        buf.writeln('${entry.key}：$preview');
+      for (final n in noteItems) {
+        final preview = n.content.length > 60 ? '${n.content.substring(0, 60)}…' : n.content;
+        buf.writeln('${n.dateKey}[id=${n.id}]：$preview');
       }
     }
     buf.writeln();
@@ -815,7 +836,7 @@ class DatabaseService {
       buf.writeln('（無靈感）');
     } else {
       for (int i = 0; i < ideas.length; i++) {
-        buf.writeln('${i + 1}. ${ideas[i].text}');
+        buf.writeln('${i + 1}. [id=${ideas[i].id}] ${ideas[i].text}');
       }
     }
     buf.writeln();

@@ -1,14 +1,20 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme.dart';
+import '../models/event.dart';
+import '../models/recap_item.dart';
+import '../models/todo_item.dart';
+import '../data/seed_data.dart' show kCatColors, todayKey;
 import '../services/database_service.dart';
 import '../services/openai_service.dart';
 
 class AIChatOverlay extends StatefulWidget {
   final VoidCallback onClose;
+  final VoidCallback? onDataMutated;
 
-  const AIChatOverlay({super.key, required this.onClose});
+  const AIChatOverlay({super.key, required this.onClose, this.onDataMutated});
 
   @override
   State<AIChatOverlay> createState() => _AIChatOverlayState();
@@ -113,6 +119,133 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
     });
   }
 
+  /// Executes an AI tool call and returns a result JSON string + mutated flag.
+  Future<({String result, bool mutated})> _executeAiTool(
+    String name, Map<String, dynamic> args,
+  ) async {
+    final db = DatabaseService.instance;
+    try {
+      switch (name) {
+        case 'delete_event': {
+          final id = (args['id'] as num).toInt();
+          final deleted = await db.deleteEvent(id);
+          if (deleted == 0) return (result: '{"error":"找不到 id=$id 的行程"}', mutated: false);
+          return (result: '{"ok":true,"deleted":"行程 id=$id"}', mutated: true);
+        }
+
+        case 'add_event': {
+          final now = DateTime.now();
+          final event = CalendarEvent(
+            id: 0,
+            title: args['title'] as String,
+            startYear:  (args['start_year']  as num?)?.toInt() ?? now.year,
+            startMonth: (args['start_month'] as num?)?.toInt() ?? now.month,
+            startDay:   (args['start_day']   as num).toInt(),
+            startHour:  (args['start_hour']  as num).toInt(),
+            startMin:   (args['start_min']   as num).toInt(),
+            endYear:    (args['end_year']    as num?)?.toInt() ?? now.year,
+            endMonth:   (args['end_month']   as num?)?.toInt() ?? now.month,
+            endDay:     (args['end_day']     as num).toInt(),
+            endHour:    (args['end_hour']    as num).toInt(),
+            endMin:     (args['end_min']     as num).toInt(),
+            color: AppColors.amber,
+          );
+          final id = await db.insertEvent(event);
+          return (result: '{"ok":true,"id":$id}', mutated: true);
+        }
+
+        case 'delete_todo': {
+          final id = (args['id'] as num).toInt();
+          final deleted = await db.deleteTodo(id);
+          if (deleted == 0) return (result: '{"error":"找不到 id=$id 的待辦"}', mutated: false);
+          return (result: '{"ok":true,"deleted":"待辦 id=$id"}', mutated: true);
+        }
+
+        case 'add_todo': {
+          final text = args['text'] as String;
+          final cat  = args['cat']  as String? ?? '個人';
+          final color = kCatColors[cat] ?? AppColors.rose;
+          final id = await db.insertTodo(
+            TodoItem(id: 0, text: text, done: false, cat: cat, color: color),
+          );
+          return (result: '{"ok":true,"id":$id}', mutated: true);
+        }
+
+        case 'delete_idea': {
+          final id = (args['id'] as num).toInt();
+          final deleted = await db.deleteIdea(id);
+          if (deleted == 0) return (result: '{"error":"找不到 id=$id 的靈感"}', mutated: false);
+          return (result: '{"ok":true,"deleted":"靈感 id=$id"}', mutated: true);
+        }
+
+        case 'delete_note': {
+          final id = (args['id'] as num).toInt();
+          final exists = await db.noteExists(id);
+          if (!exists) return (result: '{"error":"找不到 id=$id 的筆記"}', mutated: false);
+          await db.deleteNote(id);
+          return (result: '{"ok":true,"deleted":"筆記 id=$id"}', mutated: true);
+        }
+
+        case 'add_idea': {
+          final text = args['text'] as String;
+          final id = await db.insertIdea(text);
+          _enrichIdeaAsync(id, text);
+          return (result: '{"ok":true,"id":$id}', mutated: true);
+        }
+
+        case 'add_note': {
+          final dateKey = args['date_key'] as String? ?? todayKey();
+          final content = args['content'] as String;
+          final id = await db.upsertNote(dateKey, content);
+          if (id > 0) _classifyNoteAsync(id, content);
+          return (result: '{"ok":true,"id":$id}', mutated: id > 0);
+        }
+
+        case 'add_recap': {
+          final eraStr = args['era'] as String? ?? 'now';
+          final era = Era.values.firstWhere(
+            (e) => e.name == eraStr,
+            orElse: () => Era.now,
+          );
+          final id = await db.insertRecapItem(RecapItem(
+            id: '0',
+            era: era,
+            title: args['title'] as String,
+            desc: args['desc'] as String? ?? '',
+            completedDate: era == Era.past ? args['date'] as String? : null,
+            targetDate:    era != Era.past ? args['date'] as String? : null,
+          ));
+          return (result: '{"ok":true,"id":$id}', mutated: true);
+        }
+
+        default:
+          return (result: '{"error":"未知工具：$name"}', mutated: false);
+      }
+    } catch (e) {
+      return (result: '{"error":"執行失敗：$e"}', mutated: false);
+    }
+  }
+
+  Future<void> _enrichIdeaAsync(int ideaId, String text) async {
+    final enrichment = await OpenAIService.instance.enrichIdea(text);
+    if (enrichment == null) return;
+    final linksJson = jsonEncode(
+      enrichment.links.map((l) => {'title': l.title, 'url': l.url}).toList(),
+    );
+    await DatabaseService.instance.updateIdeaAiResult(ideaId, enrichment.summary, linksJson);
+    if (mounted) widget.onDataMutated?.call();
+  }
+
+  Future<void> _classifyNoteAsync(int noteId, String content) async {
+    final db = DatabaseService.instance;
+    final categories = await db.getNoteCategories();
+    if (categories.isEmpty) return;
+    final catId = await OpenAIService.instance.classifyNoteToCategory(content, categories);
+    if (catId == null) return;
+    await db.updateNoteCat(noteId, catId);
+    if (mounted) widget.onDataMutated?.call();
+  }
+
   Future<void> _send([String? preset]) async {
     final text = preset ?? _inputCtrl.text.trim();
     if (text.isEmpty || _loading) return;
@@ -135,13 +268,16 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
     ];
 
     final context = await DatabaseService.instance.buildContextSummary();
-    final reply   = await OpenAIService.instance.chat(
+    final (:reply, :dataMutated) = await OpenAIService.instance.chat(
       history, context,
       selfIntro: _selfIntro,
       aiInstructions: _aiInstructions,
+      toolExecutor: _executeAiTool,
     );
 
     if (!mounted) return;
+
+    if (dataMutated) widget.onDataMutated?.call();
 
     await DatabaseService.instance.insertChatMessage(true, text);
     await DatabaseService.instance.insertChatMessage(false, reply);

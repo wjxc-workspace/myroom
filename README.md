@@ -16,11 +16,21 @@ A personal productivity app built with Flutter. MyRoom combines a calendar, to-d
 
 **AI overlay (Ask AI)**
 - Real-time chat with GPT-4o-mini, with full awareness of your current todos, events, notes, ideas, and goals.
+- **Tool-calling (9 CRUD tools)**: the AI can create and delete items directly from conversation — add/delete calendar events and todos, add ideas (auto-enrichment triggered), add notes (auto-classification triggered), add recap items, and delete ideas and notes.
+- The AI response loop runs up to 6 rounds, processing all tool calls before generating a final reply.
 - Conversation history is persisted across sessions.
 
 **Smart Add overlay (`+` button)**
-- Type anything in plain language; GPT classifies it and routes it to the right section automatically.
-- Examples: `"明天下午三點開會"` → Calendar event + Todo. `"買牛奶"` → Todo. `"如果日記能自動分析情緒就好了"` → Idea.
+- Accepts **text, images, audio (in-app recording or uploaded file), and text/PDF files** (all ≤ 25 MB).
+- A single message can contain **multiple unrelated items**; GPT splits and classifies each one independently.
+  - Example: `"提醒我明天早上9點開FRC會議，然後找個時間開始練習電繪。喔對了，昨天我寫完FSLib了"` → Calendar event + Todo + Note.
+- Calendar events carry full **year and month** fields — events for dates in future months (e.g. "明年3月15號") land on the correct month, not the current one.
+- Attachments: tap 📎 to pick images, audio files (.mp3/.m4a/.wav/.ogg), plain text or PDF; tap 🎤 to record directly.
+  - Images are encoded and sent to GPT-4o-mini vision.
+  - Audio is transcribed via OpenAI Whisper before classification.
+  - Text/PDF content is extracted and prepended to the classification prompt.
+- Classified ideas are immediately routed through AI enrichment (summary + resource links); classified notes are immediately routed through AI category classification.
+- After saving, a silent summary chip lists all created items (e.g. "✓ 新增 1 行程、1 待辦、1 筆記").
 
 **Idea page (靈感)**
 - **紀錄靈感 tab** — Each new idea is immediately saved, then enriched by GPT (one-sentence core insight + 2–3 resource links). Tap a card to expand the AI panel. Links open in the system browser. Cards can be individually deleted (synced to DB).
@@ -58,6 +68,7 @@ Create (or edit) `lib/config.dart`. This file is gitignored — never commit a r
 class AppConfig {
   static const openAiApiKey = 'sk-YOUR_KEY_HERE';  // ← paste your key here
   static const openAiModel  = 'gpt-4o-mini';
+  static const openAiWebSearchModel = 'gpt-4o-mini-search-preview';
 }
 ```
 
@@ -156,14 +167,16 @@ if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
 
 ### AI integration
 
-`OpenAIService` is a singleton making direct HTTPS calls to the OpenAI Chat Completions endpoint via the `http` package. It exposes six operations:
+`OpenAIService` is a singleton making direct HTTPS calls to the OpenAI Chat Completions and Audio endpoints via the `http` package. It exposes eight operations:
 
 | Method | Temp | Tokens | Purpose |
 |--------|------|--------|---------|
-| `classifyInput` | 0.2 | 200 | Routes free-text input to the correct tab |
-| `chat` | 0.7 | 600 | Conversational assistant with live DB context |
+| `classifyInput` | 0.2 | 200 | Routes single free-text input to the correct tab (legacy path) |
+| `classifyMultiInput` | 0.2 | 800 | Multi-modal multi-item classification — text + images + file text → `List<ClassificationResult>` |
+| `transcribeAudio` | — | — | Sends audio bytes to Whisper (`whisper-1`) and returns the transcript |
+| `chat` | 0.7 | 600 | Conversational assistant with tool-calling (9 CRUD tools, multi-round loop), live DB context, user self-intro, and AI instructions |
 | `enrichIdea` | 0.5 | 300 | One-sentence insight + 2–3 links per idea |
-| `fetchRecommendations` | 0.6 | 600 | 4–6 curated resources from top-5 ideas |
+| `fetchRecommendations` | — | 600 | 4–6 web-searched curated resources from top-5 ideas (`gpt-4o-mini-search-preview`) |
 | `classifyNoteToCategory` | 0.2 | 50 | Assigns a single date note to the best-matching category when the day panel is closed |
 | `findNotesMatchingCategory` | 0.2 | 200 | Batch-checks all 未分類 notes against a newly created category in one API call; returns matched note IDs |
 
@@ -204,6 +217,10 @@ ClassificationResult
 | `path` | ^1.9.1 | Database file path helper |
 | `http` | ^1.2.2 | OpenAI REST calls |
 | `url_launcher` | ^6.3.1 | Open URLs in the system browser |
+| `file_picker` | ^8.1.1 | Pick images, audio files, and text/PDF files from device storage |
+| `record` | ^6.0.0 | In-app microphone audio recording |
+| `permission_handler` | ^11.3.1 | Microphone permission on Android / iOS |
+| `pdfrx` | ^1.2.23 | PDF text extraction (pdfium-based, cross-platform) |
 
 ---
 
@@ -213,5 +230,5 @@ ClassificationResult
 - All UI copy is in Traditional Chinese (繁體中文); AI responses are also in Chinese.
 - The `todos` table has `priority INTEGER NOT NULL DEFAULT 3` and `created_at INTEGER NOT NULL` columns. The `categories` table stores custom todo categories.
 - The `events` table stores full year/month fields (`start_year`, `start_month`, `end_year`, `end_month`) so events can span across different months and years correctly.
-- **Delete support**: calendar events have a trash icon in their detail sheet (confirm dialog before delete); todo items support swipe-left (confirm dialog before delete). Both sync to SQLite immediately via `deleteEvent(id)` and `deleteTodo(id)`.
+- **Delete support**: calendar events have a trash icon in their detail sheet (confirm dialog before delete); todo items support swipe-left (confirm dialog before delete). All four delete methods (`deleteEvent`, `deleteTodo`, `deleteIdea`, `deleteNote`) return `Future<int>` (rows affected), so the AI chat can detect "item not found" without a pre-check query.
 - The database schema is version 3. If you have an older DB file, delete it (located at the path printed by `getDatabasesPath()`) and relaunch to trigger a fresh `_onCreate`.

@@ -178,6 +178,16 @@ class _MyRoomShellState extends State<MyRoomShell> {
     if (mounted) setState(() => _notes = updated);
   }
 
+  // Fire-and-forget: classify a newly inserted note into a user category.
+  Future<void> _classifyInsertedNote(int noteId, String content) async {
+    final db = DatabaseService.instance;
+    final categories = await db.getNoteCategories();
+    if (categories.isEmpty) return;
+    final catId = await OpenAIService.instance.classifyNoteToCategory(content, categories);
+    if (catId == null) return;
+    await db.updateNoteCat(noteId, catId);
+  }
+
   void _onItemClassified(ClassificationResult r) async {
     final db = DatabaseService.instance;
 
@@ -191,7 +201,6 @@ class _MyRoomShellState extends State<MyRoomShell> {
       case ClassifiedTodoWithTime():
         final color = kCatColors[r.cat] ?? AppColors.rose;
         final results = await Future.wait([
-          db.insertTodo(TodoItem(id: 0, text: r.text, done: false, cat: r.cat, color: color)),
           db.insertEvent(CalendarEvent(
             id: 0,
             title: r.text,
@@ -210,14 +219,13 @@ class _MyRoomShellState extends State<MyRoomShell> {
         }
 
       case ClassifiedIdea():
-        await db.insertIdea(r.text);
-        final ideas = await db.getIdeas();
-        if (mounted) setState(() => _ideas = ideas);
+        await _onIdeaAdded(r.text);
 
       case ClassifiedNote():
-        await db.upsertNote(r.dateKey, r.content);
+        final id = await db.upsertNote(r.dateKey, r.content);
         final notes = await db.getNotes();
         if (mounted) setState(() => _notes = notes);
+        if (id > 0) _classifyInsertedNote(id, r.content);
 
       case ClassifiedRecap():
         await db.insertRecapItem(RecapItem(
@@ -351,23 +359,27 @@ class _MyRoomShellState extends State<MyRoomShell> {
             ),
 
             if (_overlay == _Overlay.ai)
-              AIChatOverlay(onClose: () => setState(() => _overlay = _Overlay.none)),
+              AIChatOverlay(
+                onClose: () => setState(() => _overlay = _Overlay.none),
+                onDataMutated: _loadAll,
+              ),
             if (_overlay == _Overlay.add)
               AddOverlay(
                 onClose: () => setState(() => _overlay = _Overlay.none),
                 onItemClassified: _onItemClassified,
               ),
-
-            Positioned(
-              bottom: 22, left: 20, right: 20,
-              child: BottomNavBar(
-                activeIndex: _activeTab,
-                onTap: (i) => setState(() {
-                  _activeTab = i;
-                  _overlay = _Overlay.none;
-                }),
+            
+            
+            if (_overlay == _Overlay.none)
+              Positioned(
+                bottom: 22, left: 20, right: 20,
+                child: BottomNavBar(
+                  activeIndex: _activeTab,
+                  onTap: (i) => setState(() {
+                    _activeTab = i;
+                  }),
+                ),
               ),
-            ),
           ],
         ),
       ),

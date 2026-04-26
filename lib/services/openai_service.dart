@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:myroom/services/database_service.dart';
 import '../config.dart';
 import '../models/recap_item.dart' show Era;
 import '../models/idea.dart' show IdeaLink;
@@ -239,11 +240,165 @@ class OpenAIService {
 
   // ── Chat ────────────────────────────────────────────────────────────────────
 
-  Future<String> chat(
+  // Tool definitions exposed to GPT for CRUD operations.
+  static final _chatTools = <Map<String, dynamic>>[
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'delete_event',
+        'description': '刪除一個行程（取消某個 event）',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'id': <String, dynamic>{'type': 'integer', 'description': '行程的資料庫 id'},
+          },
+          'required': ['id'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'add_event',
+        'description': '新增一個行程',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'title':       <String, dynamic>{'type': 'string',  'description': '行程標題'},
+            'start_year':  <String, dynamic>{'type': 'integer', 'description': '開始年份'},
+            'start_month': <String, dynamic>{'type': 'integer', 'description': '開始月份'},
+            'start_day':   <String, dynamic>{'type': 'integer', 'description': '開始日'},
+            'start_hour':  <String, dynamic>{'type': 'integer', 'description': '開始小時（24h）'},
+            'start_min':   <String, dynamic>{'type': 'integer', 'description': '開始分鐘'},
+            'end_year':    <String, dynamic>{'type': 'integer', 'description': '結束年份'},
+            'end_month':   <String, dynamic>{'type': 'integer', 'description': '結束月份'},
+            'end_day':     <String, dynamic>{'type': 'integer', 'description': '結束日'},
+            'end_hour':    <String, dynamic>{'type': 'integer', 'description': '結束小時（24h）'},
+            'end_min':     <String, dynamic>{'type': 'integer', 'description': '結束分鐘'},
+          },
+          'required': ['title', 'start_year', 'start_month', 'start_day',
+                       'start_hour', 'start_min', 'end_year', 'end_month',
+                       'end_day', 'end_hour', 'end_min'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'delete_todo',
+        'description': '刪除一個待辦事項',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'id': <String, dynamic>{'type': 'integer', 'description': '待辦的資料庫 id'},
+          },
+          'required': ['id'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'add_todo',
+        'description': '新增一個待辦事項',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'text': <String, dynamic>{'type': 'string', 'description': '待辦內容'},
+            'cat':  <String, dynamic>{'type': 'string', 'description': '分類：工作、學習、個人、健康'},
+          },
+          'required': ['text', 'cat'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'delete_idea',
+        'description': '刪除一個靈感',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'id': <String, dynamic>{'type': 'integer', 'description': '靈感的資料庫 id'},
+          },
+          'required': ['id'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'delete_note',
+        'description': '刪除一則筆記',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'id': <String, dynamic>{'type': 'integer', 'description': '筆記的資料庫 id'},
+          },
+          'required': ['id'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'add_idea',
+        'description': '新增一個靈感或想法（儲存後 AI 會自動生成摘要與資源連結）',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'text': <String, dynamic>{'type': 'string', 'description': '靈感內容'},
+          },
+          'required': ['text'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'add_note',
+        'description': '新增一則筆記（儲存後 AI 會自動分類）',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'date_key': <String, dynamic>{'type': 'string', 'description': '日期 YYYY-MM-DD，預設今天'},
+            'content':  <String, dynamic>{'type': 'string', 'description': '筆記內容'},
+          },
+          'required': ['content'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': <String, dynamic>{
+        'name': 'add_recap',
+        'description': '新增一個回顧項目（成就、進行中目標或未來計畫）',
+        'parameters': <String, dynamic>{
+          'type': 'object',
+          'properties': <String, dynamic>{
+            'era':   <String, dynamic>{'type': 'string', 'description': 'past、now、或 future'},
+            'title': <String, dynamic>{'type': 'string', 'description': '標題'},
+            'desc':  <String, dynamic>{'type': 'string', 'description': '描述'},
+            'date':  <String, dynamic>{'type': 'string', 'description': '日期字串（如「2025年底」）'},
+          },
+          'required': ['era', 'title'],
+        },
+      },
+    },
+  ];
+
+  /// Sends [history] + current context to GPT and returns the assistant reply.
+  /// If [toolExecutor] is provided, GPT may call any of [_chatTools]; the
+  /// executor runs each call and returns a result string + a mutated flag.
+  /// The returned record includes `dataMutated: true` if any tool changed data.
+  Future<({String reply, bool dataMutated})> chat(
     List<Map<String, String>> history,
     String contextSummary, {
     String selfIntro = '',
     String aiInstructions = '',
+    Future<({String result, bool mutated})> Function(
+            String name, Map<String, dynamic> args)?
+        toolExecutor,
   }) async {
     assert(
       AppConfig.openAiApiKey != 'sk-YOUR_KEY_HERE',
@@ -254,45 +409,95 @@ class OpenAIService {
     buf.write('你是 MyRoom 個人助理。以下是使用者的完整資料：\n\n$contextSummary\n\n');
     if (selfIntro.isNotEmpty) buf.write('【關於使用者】$selfIntro\n\n');
     if (aiInstructions.isNotEmpty) buf.write('【回覆指示】$aiInstructions\n\n');
-    buf.write('請用繁體中文回答，語氣簡潔友善。回答盡量不超過 150 字，除非需要列表。');
+    buf.write('請用繁體中文回答，語氣簡潔友善。回答盡量不超過 150 字，除非需要【回覆指示】中要求。');
+    if (toolExecutor != null) {
+      buf.write('\n\n你可以使用工具新增或刪除資料。你需要具備敏銳的洞察力，主動辨識出使用者的需求並使用工具，');
+      buf.write('不一定需要使用者明確要求。例如，當使用者提出想法，將想法加入靈感；當使用者表示心情低落時，自動新增筆記；');
+      buf.write('當使用者提出行程，依照時間的有無，加入行程或待辦事項。執行工具後，用繁體中文告知使用者結果。');
+    }
     final systemMsg = buf.toString();
 
-    final messages = [
+    final List<Map<String, dynamic>> messages = [
       {'role': 'system', 'content': systemMsg},
-      ...history,
+      for (final m in history)
+        {'role': m['role'] as String, 'content': m['content'] as String},
     ];
 
+    bool dataMutated = false;
+    const maxRounds = 6;
+
     try {
-      final response = await http
-          .post(
-            Uri.parse(_endpoint),
-            headers: {
-              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'model': AppConfig.openAiModel,
-              'messages': messages,
-              'temperature': 0.7,
-              'max_tokens': 600,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      for (int round = 0; round < maxRounds; round++) {
+        final reqBody = <String, dynamic>{
+          'model': AppConfig.openAiModel,
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 600,
+        };
+        if (toolExecutor != null) reqBody['tools'] = _chatTools;
 
-      if (response.statusCode != 200) {
-        debugPrint('OpenAI chat error ${response.statusCode}: ${response.body}');
-        return 'AI 服務暫時無法使用（${response.statusCode}），請稍後再試。';
+        final response = await http
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(reqBody),
+            )
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode != 200) {
+          debugPrint('OpenAI chat error ${response.statusCode}: ${response.body}');
+          return (
+            reply: 'AI 服務暫時無法使用（${response.statusCode}），請稍後再試。',
+            dataMutated: dataMutated,
+          );
+        }
+
+        final body = jsonDecode(utf8.decode(response.bodyBytes));
+        final choice = body['choices'][0] as Map<String, dynamic>;
+        final finishReason = choice['finish_reason'] as String? ?? 'stop';
+        final message = choice['message'] as Map<String, dynamic>;
+
+        if (finishReason == 'tool_calls' && toolExecutor != null) {
+          // Add the assistant turn (which contains tool_calls) to history.
+          messages.add(Map<String, dynamic>.from(message));
+
+          final toolCalls = message['tool_calls'] as List;
+          for (final tc in toolCalls) {
+            final tcMap = tc as Map<String, dynamic>;
+            final toolCallId = tcMap['id'] as String;
+            final funcName = tcMap['function']['name'] as String;
+            final argsJson = tcMap['function']['arguments'] as String;
+            Map<String, dynamic> args;
+            try {
+              args = jsonDecode(argsJson) as Map<String, dynamic>;
+            } catch (_) {
+              args = {};
+            }
+            final (:result, :mutated) = await toolExecutor(funcName, args);
+            if (mutated) dataMutated = true;
+            messages.add({
+              'role': 'tool',
+              'tool_call_id': toolCallId,
+              'content': result,
+            });
+          }
+          // Continue loop so GPT can react to tool results.
+        } else {
+          final content = message['content'] as String? ?? '（無回應）';
+          return (reply: content, dataMutated: dataMutated);
+        }
       }
-
-      final body = jsonDecode(utf8.decode(response.bodyBytes));
-      return body['choices'][0]['message']['content'] as String? ?? '（無回應）';
+      return (reply: '（AI 運算超出輪數限制，請再試）', dataMutated: dataMutated);
     } on SocketException {
-      return '無法連線，請確認網路連線後再試。';
+      return (reply: '無法連線，請確認網路連線後再試。', dataMutated: dataMutated);
     } on TimeoutException {
-      return '請求逾時，請稍後再試。';
+      return (reply: '請求逾時，請稍後再試。', dataMutated: dataMutated);
     } catch (e) {
       debugPrint('chat error: $e');
-      return '發生未知錯誤，請再試一次。';
+      return (reply: '發生未知錯誤，請再試一次。', dataMutated: dataMutated);
     }
   }
 
@@ -600,6 +805,187 @@ class OpenAIService {
     } catch (e) {
       debugPrint('findNotesMatchingCategory error: $e');
       return [];
+    }
+  }
+
+  // ── Multi-item classification ───────────────────────────────────────────────
+
+  static const _multiClassifySystemPrompt = '你是一個個人生產力助理，使用繁體中文。使用者的輸入可能包含多個不同主題的事項。\n'
+      '分析全部內容，拆解成數個彼此獨立的事項，每個事項都只能被分類到以下五種類型之一，並回傳 JSON。\n\n'
+      '回傳格式（嚴格 JSON，不含其他文字）：{"items":[...]}\n\n'
+      '每個 item 的結構：\n'
+      '- todo: {"type":"todo","text":"...","cat":"..."}\n'
+      '- todo_with_time: {"type":"todo_with_time","text":"...","cat":"...",\n'
+      '    "start_year":YYYY,"start_month":MM,"start_day":N,"start_hour":N,"start_min":N,\n'
+      '    "end_year":YYYY,  "end_month":MM,  "end_day":N,  "end_hour":N,  "end_min":N}\n'
+      '  （若沒有明確結束時間，預設 start+1 小時；start_year/start_month 若未跨月可省略，預設當月）\n'
+      '- idea: {"type":"idea","text":"..."}\n'
+      '- note: {"type":"note","date_key":"YYYY-MM-DD","content":"..."}\n'
+      '- recap: {"type":"recap","era":"past|now|future","title":"...","desc":"...","date":"..."}\n\n'
+      '特別說明：\n'
+      '- todo 代表未指定時間的事項，例如「找個時間去買蘋果」\n'
+      '- todo_with_time 代表有明確時間的事項\n\n'
+      '規則：\n'
+      '- 只回傳 JSON，不含其他文字\n'
+      '- 每個拆解出來的事項「只能對應一個 item」\n'
+      '- 每個 item「只能屬於一種類型」\n'
+      '- 類型僅限以下五種，且不可同時屬於多種：todo / todo_with_time / idea / note / recap\n'
+      '- 特別是 todo 與 todo_with_time 必須二擇一，不可同時出現或混用\n'
+      '- todo，todo_with_time，和idea的說明需刪除冗餘文字，例如"找個時間去買蘋果"應紀錄為"買蘋果"\n'
+      '- 若整體無法分類，回傳 {"items":[{"type":"note","date_key":"TODAY","content":"原文"}]}';
+
+  /// Classifies [text] (plus optional images / file text) into potentially
+  /// multiple items. Images must be base64-encoded JPEG/PNG strings.
+  Future<List<ClassificationResult>> classifyMultiInput(
+    String? text, {
+    List<String> base64Images = const [],
+    String? fileText,
+  }) async {
+    assert(
+      AppConfig.openAiApiKey != 'sk-YOUR_KEY_HERE',
+      'Please set your OpenAI API key in lib/config.dart',
+    );
+
+    final parts = <String>[];
+    if (text != null && text.isNotEmpty) parts.add(text);
+    if (fileText != null && fileText.isNotEmpty) parts.add(fileText);
+    final combinedText = parts.join('\n\n');
+    final rawInput = combinedText.isNotEmpty ? combinedText : '（無文字輸入）';
+
+    final today = _todayStr();
+    final categories = await DatabaseService.instance.getCategories();
+    final systemContent = '$_multiClassifySystemPrompt\n今天日期：$today\ncat只能是：${categories.map((c) => c.name).join('|')}';
+
+    // Build user message content: text part + optional image parts
+    final List<Map<String, dynamic>> userContent = [
+      {'type': 'text', 'text': rawInput},
+      for (final b64 in base64Images)
+        {
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,$b64', 'detail': 'low'},
+        },
+    ];
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer ${AppConfig.openAiApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': AppConfig.openAiModel,
+              'messages': [
+                {'role': 'system', 'content': systemContent},
+                {'role': 'user', 'content': userContent},
+              ],
+              'response_format': {'type': 'json_object'},
+              'temperature': 0.2,
+              'max_tokens': 800,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        debugPrint('classifyMultiInput error ${response.statusCode}: ${response.body}');
+        return [ClassificationError(message: 'API 回應錯誤（${response.statusCode}）', rawText: combinedText)];
+      }
+
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final content = body['choices'][0]['message']['content'] as String;
+      final j = jsonDecode(content) as Map<String, dynamic>;
+      final rawItems = j['items'] as List? ?? [];
+
+      print(j);
+
+      if (rawItems.isEmpty) {
+        return [ClassifiedNote(dateKey: today, content: combinedText.isNotEmpty ? combinedText : rawInput)];
+      }
+
+      return rawItems
+          .map((item) => _parseSingleItem(item as Map<String, dynamic>, combinedText))
+          .toList();
+    } on SocketException {
+      return [ClassificationError(message: '無法連線，請確認網路', rawText: combinedText)];
+    } on TimeoutException {
+      return [ClassificationError(message: '請求逾時', rawText: combinedText)];
+    } catch (e) {
+      debugPrint('classifyMultiInput error: $e');
+      return [ClassificationError(message: '未知錯誤', rawText: combinedText)];
+    }
+  }
+
+  ClassificationResult _parseSingleItem(Map<String, dynamic> j, String rawText) {
+    final type = j['type'] as String? ?? '';
+    switch (type) {
+      case 'todo':
+        return ClassifiedTodo(
+          text: j['text'] as String? ?? rawText,
+          cat: _safecat(j['cat']),
+        );
+      case 'todo_with_time':
+        return ClassifiedTodoWithTime(
+          text: j['text'] as String? ?? rawText,
+          cat: _safecat(j['cat']),
+          startYear:  (j['start_year']  as num?)?.toInt(),
+          startMonth: (j['start_month'] as num?)?.toInt(),
+          startDay:   (j['start_day']   as num?)?.toInt() ?? DateTime.now().day,
+          startHour:  (j['start_hour']  as num?)?.toInt() ?? 9,
+          startMin:   (j['start_min']   as num?)?.toInt() ?? 0,
+          endYear:    (j['end_year']    as num?)?.toInt(),
+          endMonth:   (j['end_month']   as num?)?.toInt(),
+          endDay:     (j['end_day']     as num?)?.toInt() ?? DateTime.now().day,
+          endHour:    (j['end_hour']    as num?)?.toInt() ?? 10,
+          endMin:     (j['end_min']     as num?)?.toInt() ?? 0,
+        );
+      case 'idea':
+        return ClassifiedIdea(text: j['text'] as String? ?? rawText);
+      case 'note':
+        return ClassifiedNote(
+          dateKey: j['date_key'] as String? ?? _todayStr(),
+          content: j['content'] as String? ?? rawText,
+        );
+      case 'recap':
+        final eraStr = j['era'] as String? ?? 'now';
+        final era = Era.values.firstWhere((e) => e.name == eraStr, orElse: () => Era.now);
+        return ClassifiedRecap(
+          era: era,
+          title: j['title'] as String? ?? rawText,
+          desc: j['desc'] as String? ?? '',
+          date: j['date'] as String? ?? _todayStr(),
+        );
+      default:
+        return ClassifiedNote(dateKey: _todayStr(), content: rawText);
+    }
+  }
+
+  // ── Audio transcription ──────────────────────────────────────────────────────
+
+  static const _whisperEndpoint = 'https://api.openai.com/v1/audio/transcriptions';
+
+  /// Transcribes [audioBytes] using OpenAI Whisper. Returns the transcript
+  /// string, or null on failure.
+  Future<String?> transcribeAudio(Uint8List audioBytes, String filename) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse(_whisperEndpoint));
+      request.headers['Authorization'] = 'Bearer ${AppConfig.openAiApiKey}';
+      request.fields['model'] = AppConfig.openAiWhisperModel;
+      request.fields['language'] = 'zh';
+      request.fields['response_format'] = 'text';
+      request.files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: filename));
+
+      final streamed = await request.send().timeout(const Duration(seconds: 60));
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode != 200) {
+        debugPrint('transcribeAudio error ${response.statusCode}: ${response.body}');
+        return null;
+      }
+      return utf8.decode(response.bodyBytes).trim();
+    } catch (e) {
+      debugPrint('transcribeAudio error: $e');
+      return null;
     }
   }
 
