@@ -67,6 +67,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
   int _activeTab = 0;
   List<CalendarEvent> _events = [];
   List<TodoItem> _todos = [];
+  List<TodoCategory> _categories = [];
   List<Idea> _ideas = [];
   Map<String, String> _notes = {};
   bool _loaded = false;
@@ -86,13 +87,15 @@ class _MyRoomShellState extends State<MyRoomShell> {
       db.getTodos(),
       db.getIdeas(),
       db.getNotes(),
+      db.getCategories(),
     ]);
     if (!mounted) return;
     setState(() {
-      _events = results[0] as List<CalendarEvent>;
-      _todos  = results[1] as List<TodoItem>;
-      _ideas  = results[2] as List<Idea>;
-      _notes  = results[3] as Map<String, String>;
+      _events     = results[0] as List<CalendarEvent>;
+      _todos      = results[1] as List<TodoItem>;
+      _ideas      = results[2] as List<Idea>;
+      _notes      = results[3] as Map<String, String>;
+      _categories = results[4] as List<TodoCategory>;
       _loaded = true;
     });
   }
@@ -107,6 +110,18 @@ class _MyRoomShellState extends State<MyRoomShell> {
     await DatabaseService.instance.updateTodo(t);
     final updated = await DatabaseService.instance.getTodos();
     if (mounted) setState(() => _todos = updated);
+  }
+
+  void _onCategoryAdded(String name, Color color) async {
+    await DatabaseService.instance.insertCategory(name, color);
+    final updated = await DatabaseService.instance.getCategories();
+    if (mounted) setState(() => _categories = updated);
+  }
+
+  void _onCategoryDeleted(int id) async {
+    await DatabaseService.instance.deleteCategory(id);
+    final updated = await DatabaseService.instance.getCategories();
+    if (mounted) setState(() => _categories = updated);
   }
 
   void _onEventAdded(CalendarEvent e) async {
@@ -165,7 +180,9 @@ class _MyRoomShellState extends State<MyRoomShell> {
           db.insertEvent(CalendarEvent(
             id: 0,
             title: r.text,
+            startYear: r.startYear,   startMonth: r.startMonth,
             startDay: r.startDay, startHour: r.startHour, startMin: r.startMin,
+            endYear: r.endYear,   endMonth: r.endMonth,
             endDay: r.endDay,   endHour: r.endHour,   endMin: r.endMin,
             color: color,
           )),
@@ -286,7 +303,14 @@ class _MyRoomShellState extends State<MyRoomShell> {
                       index: _activeTab,
                       children: [
                         CalendarPage(events: _events, onEventAdded: _onEventAdded),
-                        TodoPage(todos: _todos, onTodoAdded: _onTodoAdded, onTodoToggled: _onTodoToggled),
+                        TodoPage(
+                          todos: _todos,
+                          categories: _categories,
+                          onTodoAdded: _onTodoAdded,
+                          onTodoToggled: _onTodoToggled,
+                          onCategoryAdded: _onCategoryAdded,
+                          onCategoryDeleted: _onCategoryDeleted,
+                        ),
                         IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded, onIdeaDeleted: _onIdeaDeleted),
                         NotePage(notes: _notes, onNoteSaved: _onNoteSaved),
                         RecapPage(onNavTo: (tab) => setState(() => _activeTab = tab)),

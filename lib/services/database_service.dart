@@ -39,7 +39,11 @@ class DatabaseService {
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
     final fullPath = join(dbPath, 'myroom.db');
-    return openDatabase(fullPath, version: 1, onCreate: _onCreate);
+    return openDatabase(
+      fullPath,
+      version: 2,
+      onCreate: _onCreate,
+    );
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -50,23 +54,38 @@ class DatabaseService {
         done       INTEGER NOT NULL DEFAULT 0,
         cat        TEXT    NOT NULL,
         color      INTEGER NOT NULL,
+        priority   INTEGER NOT NULL DEFAULT 3,
         created_at INTEGER NOT NULL
       )
     ''');
 
     await db.execute('''
+      CREATE TABLE categories (
+        id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        name  TEXT    NOT NULL UNIQUE,
+        color INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE events (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        title      TEXT    NOT NULL,
-        start_day  INTEGER NOT NULL,
-        start_hour INTEGER NOT NULL,
-        start_min  INTEGER NOT NULL,
-        end_day    INTEGER NOT NULL,
-        end_hour   INTEGER NOT NULL,
-        end_min    INTEGER NOT NULL,
-        color      INTEGER NOT NULL,
-        all_day    INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        title       TEXT    NOT NULL,
+        start_year  INTEGER NOT NULL DEFAULT 2026,
+        start_month INTEGER NOT NULL DEFAULT 4,
+        start_day   INTEGER NOT NULL,
+        start_hour  INTEGER NOT NULL,
+        start_min   INTEGER NOT NULL,
+        end_year    INTEGER NOT NULL DEFAULT 2026,
+        end_month   INTEGER NOT NULL DEFAULT 4,
+        end_day     INTEGER NOT NULL,
+        end_hour    INTEGER NOT NULL,
+        end_min     INTEGER NOT NULL,
+        color       INTEGER NOT NULL,
+        all_day     INTEGER NOT NULL DEFAULT 0,
+        description TEXT,
+        location    TEXT,
+        created_at  INTEGER NOT NULL
       )
     ''');
 
@@ -132,10 +151,14 @@ class DatabaseService {
     for (final e in SeedData.initEvents) {
       await db.insert('events', {
         'title': e.title,
-        'start_day': e.startDay, 'start_hour': e.startHour, 'start_min': e.startMin,
-        'end_day': e.endDay,   'end_hour': e.endHour,   'end_min': e.endMin,
+        'start_year': e.startYear, 'start_month': e.startMonth,
+        'start_day': e.startDay,   'start_hour': e.startHour, 'start_min': e.startMin,
+        'end_year': e.endYear,     'end_month': e.endMonth,
+        'end_day': e.endDay,       'end_hour': e.endHour,   'end_min': e.endMin,
         'color': e.color.toARGB32(),
         'all_day': e.allDay ? 1 : 0,
+        'description': e.description,
+        'location': e.location,
         'created_at': now,
       });
     }
@@ -146,6 +169,7 @@ class DatabaseService {
         'done': t.done ? 1 : 0,
         'cat': t.cat,
         'color': t.color.toARGB32(),
+        'priority': t.priority,
         'created_at': now,
       });
     }
@@ -202,7 +226,8 @@ class DatabaseService {
       'done': t.done ? 1 : 0,
       'cat': t.cat,
       'color': t.color.toARGB32(),
-      'created_at': DateTime.now().millisecondsSinceEpoch,
+      'priority': t.priority,
+      'created_at': t.createdAt > 0 ? t.createdAt : DateTime.now().millisecondsSinceEpoch,
     });
   }
 
@@ -210,7 +235,7 @@ class DatabaseService {
     final database = await db;
     await database.update(
       'todos',
-      {'done': t.done ? 1 : 0, 'text': t.text, 'cat': t.cat, 'color': t.color.toARGB32()},
+      {'done': t.done ? 1 : 0, 'text': t.text, 'cat': t.cat, 'color': t.color.toARGB32(), 'priority': t.priority},
       where: 'id = ?',
       whereArgs: [t.id],
     );
@@ -227,7 +252,31 @@ class DatabaseService {
     done: (r['done'] as int) == 1,
     cat: r['cat'] as String,
     color: Color(r['color'] as int),
+    priority: (r['priority'] as int?) ?? 3,
+    createdAt: (r['created_at'] as int?) ?? 0,
   );
+
+  // ─── CATEGORIES ────────────────────────────────────────────────────────────
+
+  Future<List<TodoCategory>> getCategories() async {
+    final database = await db;
+    final rows = await database.query('categories', orderBy: 'id ASC');
+    return rows.map((r) => TodoCategory(
+      id: r['id'] as int,
+      name: r['name'] as String,
+      color: Color(r['color'] as int),
+    )).toList();
+  }
+
+  Future<int> insertCategory(String name, Color color) async {
+    final database = await db;
+    return database.insert('categories', {'name': name, 'color': color.toARGB32()});
+  }
+
+  Future<void> deleteCategory(int id) async {
+    final database = await db;
+    await database.delete('categories', where: 'id = ?', whereArgs: [id]);
+  }
 
   // ─── EVENTS ────────────────────────────────────────────────────────────────
 
@@ -241,10 +290,14 @@ class DatabaseService {
     final database = await db;
     return database.insert('events', {
       'title': e.title,
-      'start_day': e.startDay, 'start_hour': e.startHour, 'start_min': e.startMin,
-      'end_day': e.endDay,   'end_hour': e.endHour,   'end_min': e.endMin,
+      'start_year': e.startYear, 'start_month': e.startMonth,
+      'start_day': e.startDay,   'start_hour': e.startHour, 'start_min': e.startMin,
+      'end_year': e.endYear,     'end_month': e.endMonth,
+      'end_day': e.endDay,       'end_hour': e.endHour,   'end_min': e.endMin,
       'color': e.color.toARGB32(),
       'all_day': e.allDay ? 1 : 0,
+      'description': e.description,
+      'location': e.location,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -255,10 +308,14 @@ class DatabaseService {
       'events',
       {
         'title': e.title,
-        'start_day': e.startDay, 'start_hour': e.startHour, 'start_min': e.startMin,
-        'end_day': e.endDay,   'end_hour': e.endHour,   'end_min': e.endMin,
+        'start_year': e.startYear, 'start_month': e.startMonth,
+        'start_day': e.startDay,   'start_hour': e.startHour, 'start_min': e.startMin,
+        'end_year': e.endYear,     'end_month': e.endMonth,
+        'end_day': e.endDay,       'end_hour': e.endHour,   'end_min': e.endMin,
         'color': e.color.toARGB32(),
         'all_day': e.allDay ? 1 : 0,
+        'description': e.description,
+        'location': e.location,
       },
       where: 'id = ?',
       whereArgs: [e.id],
@@ -268,10 +325,20 @@ class DatabaseService {
   CalendarEvent _rowToEvent(Map<String, dynamic> r) => CalendarEvent(
     id: r['id'] as int,
     title: r['title'] as String,
-    startDay: r['start_day'] as int, startHour: r['start_hour'] as int, startMin: r['start_min'] as int,
-    endDay: r['end_day'] as int,   endHour: r['end_hour'] as int,   endMin: r['end_min'] as int,
-    color: Color(r['color'] as int),
-    allDay: (r['all_day'] as int) == 1,
+    startYear:  (r['start_year']  as int?) ?? 2026,
+    startMonth: (r['start_month'] as int?) ?? 4,
+    startDay:   r['start_day']  as int,
+    startHour:  r['start_hour'] as int,
+    startMin:   r['start_min']  as int,
+    endYear:    (r['end_year']   as int?) ?? 2026,
+    endMonth:   (r['end_month']  as int?) ?? 4,
+    endDay:     r['end_day']    as int,
+    endHour:    r['end_hour']   as int,
+    endMin:     r['end_min']    as int,
+    color:      Color(r['color'] as int),
+    allDay:     (r['all_day'] as int) == 1,
+    description: r['description'] as String?,
+    location:    r['location']    as String?,
   );
 
   // ─── IDEAS ─────────────────────────────────────────────────────────────────
@@ -497,9 +564,9 @@ class DatabaseService {
     } else {
       for (final e in events) {
         if (e.allDay) {
-          buf.writeln('- [全天] ${e.title}（${e.startDay}日–${e.endDay}日）');
+          buf.writeln('- [全天] ${e.title}（${e.startYear}/${e.startMonth}/${e.startDay}–${e.endYear}/${e.endMonth}/${e.endDay}）');
         } else {
-          buf.writeln('- ${e.startDay}日 ${fmtHm(e.startHour, e.startMin)}–${fmtHm(e.endHour, e.endMin)}：${e.title}');
+          buf.writeln('- ${e.startYear}/${e.startMonth}/${e.startDay} ${fmtHm(e.startHour, e.startMin)}–${fmtHm(e.endHour, e.endMin)}：${e.title}');
         }
       }
     }

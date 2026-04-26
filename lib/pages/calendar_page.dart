@@ -9,9 +9,6 @@ import '../widgets/mr_icon_button.dart';
 enum CalendarView { month, week, day }
 
 const int kHourH = 56;
-const int kDayStart = 7;
-const int kDayEnd = 22;
-const int kBaseWeekStart = 19; // Sun Apr 19 2026
 
 class CalendarPage extends StatefulWidget {
   final List<CalendarEvent> events;
@@ -29,22 +26,24 @@ class CalendarPage extends StatefulWidget {
 
 class _CalendarPageState extends State<CalendarPage> {
   CalendarView _view = CalendarView.month;
-  int _year = 2026;
-  int _month = 3; // April (0-indexed)
-  int _weekOffset = 0;
-  int _dayView = 24;
+  DateTime _focusDate = DateTime.now();
+
+  // Sunday-based week start
+  DateTime get _weekStart {
+    final dow = _focusDate.weekday % 7; // Mon=1..Sun=7 → Sun=0
+    return DateTime(_focusDate.year, _focusDate.month, _focusDate.day)
+        .subtract(Duration(days: dow));
+  }
 
   void _navigate(int delta) {
     setState(() {
       switch (_view) {
         case CalendarView.month:
-          _month += delta;
-          if (_month > 11) { _month = 0; _year++; }
-          if (_month < 0) { _month = 11; _year--; }
+          _focusDate = DateTime(_focusDate.year, _focusDate.month + delta, 1);
         case CalendarView.week:
-          _weekOffset += delta;
+          _focusDate = _focusDate.add(Duration(days: delta * 7));
         case CalendarView.day:
-          _dayView = (_dayView + delta).clamp(1, 30);
+          _focusDate = _focusDate.add(Duration(days: delta));
       }
     });
   }
@@ -52,13 +51,29 @@ class _CalendarPageState extends State<CalendarPage> {
   String get _headerLabel {
     switch (_view) {
       case CalendarView.month:
-        return '$_year年${kMonthNames[_month]}';
+        return '${_focusDate.year}年${kMonthNames[_focusDate.month - 1]}';
       case CalendarView.week:
-        final start = kBaseWeekStart + _weekOffset * 7;
-        return '4月 $start – ${start + 6}日';
+        final ws = _weekStart;
+        final we = ws.add(const Duration(days: 6));
+        if (ws.month == we.month) {
+          return '${ws.year}年${kMonthNames[ws.month - 1]} ${ws.day}–${we.day}日';
+        }
+        return '${kMonthNames[ws.month - 1]}${ws.day}–${kMonthNames[we.month - 1]}${we.day}日';
       case CalendarView.day:
-        return '4月${_dayView}日';
+        return '${_focusDate.year}年${kMonthNames[_focusDate.month - 1]}${_focusDate.day}日';
     }
+  }
+
+  bool _eventIsOnDay(CalendarEvent e, DateTime day) {
+    if (e.allDay) {
+      final start = DateTime(e.startYear, e.startMonth, e.startDay);
+      final end = DateTime(e.endYear, e.endMonth, e.endDay);
+      final d = DateTime(day.year, day.month, day.day);
+      return !d.isBefore(start) && !d.isAfter(end);
+    }
+    return e.startYear == day.year &&
+        e.startMonth == day.month &&
+        e.startDay == day.day;
   }
 
   @override
@@ -66,13 +81,10 @@ class _CalendarPageState extends State<CalendarPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Title row
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 22, 8),
           child: Text('行事曆', style: AppText.display()),
         ),
-
-        // View toggle + navigation
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
           child: Row(
@@ -113,7 +125,12 @@ class _CalendarPageState extends State<CalendarPage> {
                 ),
               ),
               const Spacer(),
-              // Nav chevrons
+              MrIconButton(
+                icon: LucideIcons.calendar,
+                iconSize: 16,
+                onTap: _openDatePicker,
+              ),
+              const SizedBox(width: 4),
               MrIconButton(
                 icon: LucideIcons.chevronLeft,
                 iconSize: 16,
@@ -130,48 +147,96 @@ class _CalendarPageState extends State<CalendarPage> {
             ],
           ),
         ),
-
-        Expanded(
-          child: () {
-            switch (_view) {
-              case CalendarView.month:
-                return _MonthView(
-                  year: _year,
-                  month: _month,
-                  events: widget.events,
-                  onDayTap: (d) => _showAddModal(selectedDay: d),
-                );
-              case CalendarView.week:
-                return _WeekView(
-                  weekStart: kBaseWeekStart + _weekOffset * 7,
-                  events: widget.events,
-                  onDayTap: (d) => setState(() {
-                    _dayView = d;
-                    _view = CalendarView.day;
-                  }),
-                );
-              case CalendarView.day:
-                return _DayView(
-                  day: _dayView,
-                  events: widget.events,
-                  onAdd: () => _showAddModal(selectedDay: _dayView),
-                );
-            }
-          }(),
-        ),
+        Expanded(child: _buildView()),
       ],
     );
   }
 
-  void _showAddModal({int? selectedDay}) {
+  Widget _buildView() {
+    switch (_view) {
+      case CalendarView.month:
+        return _MonthView(
+          year: _focusDate.year,
+          month: _focusDate.month,
+          events: widget.events,
+          eventIsOnDay: _eventIsOnDay,
+          onDayTap: _onMonthDayTap,
+          onEventTap: _showEventDetail,
+        );
+      case CalendarView.week:
+        return _WeekView(
+          weekStart: _weekStart,
+          events: widget.events,
+          eventIsOnDay: _eventIsOnDay,
+          onDayTap: (d) => setState(() {
+            _focusDate = d;
+            _view = CalendarView.day;
+          }),
+          onTimeTap: (dt) => _showAddModal(selectedDate: dt),
+          onEventTap: _showEventDetail,
+        );
+      case CalendarView.day:
+        return _DayView(
+          date: _focusDate,
+          events: widget.events,
+          eventIsOnDay: _eventIsOnDay,
+          onAdd: (dt) => _showAddModal(selectedDate: dt),
+          onEventTap: _showEventDetail,
+        );
+    }
+  }
+
+  void _onMonthDayTap(DateTime day) {
+    final dayEvents = widget.events.where((e) => _eventIsOnDay(e, day)).toList();
+    if (dayEvents.isNotEmpty) {
+      _showDaySheet(day, dayEvents);
+    } else {
+      _showAddModal(selectedDate: day);
+    }
+  }
+
+  void _showDaySheet(DateTime day, List<CalendarEvent> dayEvents) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _DayEventsSheet(
+        date: day,
+        events: dayEvents,
+        onEventTap: (e) { Navigator.pop(context); _showEventDetail(e); },
+        onAddTap: () { Navigator.pop(context); _showAddModal(selectedDate: day); },
+      ),
+    );
+  }
+
+  Future<void> _openDatePicker() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _focusDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null && mounted) setState(() => _focusDate = picked);
+  }
+
+  void _showAddModal({DateTime? selectedDate}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _AddEventModal(
-        selectedDay: selectedDay,
+        selectedDate: selectedDate ?? _focusDate,
         onSave: (e) => widget.onEventAdded(e),
       ),
+    );
+  }
+
+  void _showEventDetail(CalendarEvent e) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _EventDetailSheet(event: e),
     );
   }
 }
@@ -181,25 +246,29 @@ class _CalendarPageState extends State<CalendarPage> {
 class _MonthView extends StatelessWidget {
   final int year, month;
   final List<CalendarEvent> events;
-  final ValueChanged<int> onDayTap;
+  final ValueChanged<DateTime> onDayTap;
+  final ValueChanged<CalendarEvent> onEventTap;
+  final bool Function(CalendarEvent, DateTime) eventIsOnDay;
 
   const _MonthView({
     required this.year,
     required this.month,
     required this.events,
     required this.onDayTap,
+    required this.onEventTap,
+    required this.eventIsOnDay,
   });
 
   @override
   Widget build(BuildContext context) {
-    final firstDow = DateTime(year, month + 1, 1).weekday % 7; // 0=Sun
-    final daysInMonth = DateTime(year, month + 2, 0).day;
+    final today = DateTime.now();
+    final firstDow = DateTime(year, month, 1).weekday % 7; // 0=Sun
+    final daysInMonth = DateTime(year, month + 1, 0).day;
     final cells = firstDow + daysInMonth;
     final rows = (cells / 7).ceil();
 
     return Column(
       children: [
-        // Day-of-week header
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
@@ -212,13 +281,14 @@ class _MonthView extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Expanded(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.only(left: 20, right: 20, bottom: 100),
             child: GridView.builder(
+              shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 7,
-                mainAxisExtent: (MediaQuery.of(context).size.height - 280) / rows,
+                mainAxisExtent: 90,
               ),
               itemCount: rows * 7,
               itemBuilder: (_, idx) {
@@ -233,15 +303,13 @@ class _MonthView extends StatelessWidget {
                     ),
                   );
                 }
-                final isToday = year == 2026 && month == 3 && day == 24;
-                final isPast = year == 2026 && month == 3 && day < 24;
-                final dayEvents = events.where((e) {
-                  if (e.allDay) return day >= e.startDay && day <= e.endDay;
-                  return e.startDay == day;
-                }).toList();
+                final date = DateTime(year, month, day);
+                final isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+                final isPast = date.isBefore(DateTime(today.year, today.month, today.day));
+                final dayEvents = events.where((e) => eventIsOnDay(e, date)).toList();
 
                 return GestureDetector(
-                  onTap: () => onDayTap(day),
+                  onTap: () => onDayTap(date),
                   child: Container(
                     decoration: BoxDecoration(
                       border: Border(
@@ -250,18 +318,16 @@ class _MonthView extends StatelessWidget {
                       ),
                     ),
                     padding: const EdgeInsets.all(3),
-                    child: Column(
+                    child: Flex(
+                      direction: Axis.vertical,
+                      clipBehavior: Clip.hardEdge,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Center(
                           child: Container(
-                            width: 24,
-                            height: 24,
+                            width: 24, height: 24,
                             decoration: isToday
-                                ? const BoxDecoration(
-                                    color: AppColors.dark,
-                                    shape: BoxShape.circle,
-                                  )
+                                ? const BoxDecoration(color: AppColors.dark, shape: BoxShape.circle)
                                 : null,
                             child: Center(
                               child: Text(
@@ -269,36 +335,29 @@ class _MonthView extends StatelessWidget {
                                 style: AppText.caption(
                                   size: 11,
                                   weight: isToday ? FontWeight.w700 : FontWeight.w400,
-                                  color: isToday
-                                      ? Colors.white
-                                      : isPast
-                                          ? AppColors.muted
-                                          : AppColors.dark,
+                                  color: isToday ? Colors.white : isPast ? AppColors.muted : AppColors.dark,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        ...dayEvents.take(2).map((e) => Container(
-                          margin: const EdgeInsets.only(top: 2),
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: e.color,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            e.title,
-                            style: const TextStyle(fontSize: 8, color: Colors.white),
-                            overflow: TextOverflow.ellipsis,
+                        ...dayEvents.take(2).map((e) => GestureDetector(
+                          onTap: () => onEventTap(e),
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(color: e.color, borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              e.title,
+                              style: const TextStyle(fontSize: 8, color: Colors.white),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )),
                         if (dayEvents.length > 2)
                           Padding(
                             padding: const EdgeInsets.only(top: 2, left: 3),
-                            child: Text(
-                              '+${dayEvents.length - 2}',
-                              style: AppText.caption(size: 8),
-                            ),
+                            child: Text('+${dayEvents.length - 2}', style: AppText.caption(size: 8)),
                           ),
                       ],
                     ),
@@ -316,32 +375,38 @@ class _MonthView extends StatelessWidget {
 // ─── Week View ────────────────────────────────────────────────────────────────
 
 class _WeekView extends StatelessWidget {
-  final int weekStart;
+  final DateTime weekStart;
   final List<CalendarEvent> events;
-  final ValueChanged<int> onDayTap;
+  final ValueChanged<DateTime> onDayTap;
+  final ValueChanged<DateTime> onTimeTap;
+  final ValueChanged<CalendarEvent> onEventTap;
+  final bool Function(CalendarEvent, DateTime) eventIsOnDay;
 
   const _WeekView({
     required this.weekStart,
     required this.events,
     required this.onDayTap,
+    required this.onTimeTap,
+    required this.onEventTap,
+    required this.eventIsOnDay,
   });
 
   @override
   Widget build(BuildContext context) {
-    final days = List.generate(7, (i) => weekStart + i);
-    final allDayEvents = events.where((e) => e.allDay).toList();
-    final timedEvents = events.where((e) => !e.allDay).toList();
-    final totalH = (kDayEnd - kDayStart) * kHourH.toDouble();
+    final today = DateTime.now();
+    final days = List.generate(7, (i) => weekStart.add(Duration(days: i)));
+    final allDayEvts = events.where((e) => e.allDay).toList();
+    final timedEvts = events.where((e) => !e.allDay).toList();
+    final totalH = 24 * kHourH.toDouble();
 
     return Column(
       children: [
-        // Day strip header
         Padding(
-          padding: const EdgeInsets.only(left: 58, right: 20),
+          padding: const EdgeInsets.only(left: 54, right: 20),
           child: Row(
             children: days.map((d) {
-              final isToday = d == 24;
-              final dow = kDow[days.indexOf(d)];
+              final isToday = d.year == today.year && d.month == today.month && d.day == today.day;
+              final dow = kDow[d.weekday % 7];
               return Expanded(
                 child: GestureDetector(
                   onTap: () => onDayTap(d),
@@ -350,18 +415,21 @@ class _WeekView extends StatelessWidget {
                       Text(dow, style: AppText.caption(size: 9, color: AppColors.muted)),
                       const SizedBox(height: 2),
                       Container(
-                        width: 26,
-                        height: 26,
+                        width: 26, height: 26,
                         decoration: isToday
                             ? const BoxDecoration(color: AppColors.dark, shape: BoxShape.circle)
                             : null,
                         child: Center(
                           child: Text(
-                            '$d',
+                            '${d.day}',
                             style: AppText.body(
                               size: 12,
                               weight: isToday ? FontWeight.w700 : FontWeight.w400,
-                              color: isToday ? Colors.white : (d < 24 ? AppColors.muted : AppColors.dark),
+                              color: isToday
+                                  ? Colors.white
+                                  : d.isBefore(DateTime(today.year, today.month, today.day))
+                                      ? AppColors.muted
+                                      : AppColors.dark,
                             ),
                           ),
                         ),
@@ -373,30 +441,28 @@ class _WeekView extends StatelessWidget {
             }).toList(),
           ),
         ),
-
-        // All-day events strip
-        if (allDayEvents.isNotEmpty)
+        if (allDayEvts.any((e) => days.any((d) => eventIsOnDay(e, d))))
           Container(
             margin: const EdgeInsets.fromLTRB(20, 6, 20, 0),
             height: 26,
             child: Row(
               children: [
-                const SizedBox(width: 38),
+                const SizedBox(width: 34),
                 ...days.map((d) => Expanded(
                   child: Row(
-                    children: allDayEvents.where((e) => d >= e.startDay && d <= e.endDay).map((e) =>
+                    children: allDayEvts.where((e) => eventIsOnDay(e, d)).map((e) =>
                       Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 1),
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
-                          decoration: BoxDecoration(
-                            color: e.color,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            e.title,
-                            style: const TextStyle(fontSize: 9, color: Colors.white),
-                            overflow: TextOverflow.ellipsis,
+                        child: GestureDetector(
+                          onTap: () => onEventTap(e),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 1),
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            decoration: BoxDecoration(color: e.color, borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              e.title,
+                              style: const TextStyle(fontSize: 9, color: Colors.white),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                       ),
@@ -406,86 +472,86 @@ class _WeekView extends StatelessWidget {
               ],
             ),
           ),
-
         const SizedBox(height: 6),
-
-        // Time grid
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
-            final colW = (constraints.maxWidth - 20 - 38 - 20) / 7;
+            final colW = (constraints.maxWidth - 44) / 7;
             return SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 100),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.only(left: 0, right: 0),
                 child: SizedBox(
                   height: totalH,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Time labels
                       SizedBox(
-                        width: 38,
+                        width: 44,
                         child: Stack(
-                          children: List.generate(kDayEnd - kDayStart, (i) {
-                            final h = kDayStart + i;
-                            return Positioned(
-                              top: i * kHourH.toDouble() - 6,
-                              child: SizedBox(
-                                width: 36,
-                                child: Text(
-                                  '${fmt2(h)}:00',
-                                  style: AppText.caption(size: 9, color: AppColors.muted),
-                                  textAlign: TextAlign.right,
-                                ),
+                          children: List.generate(24, (h) => Positioned(
+                            top: h * kHourH.toDouble() - 7,
+                            child: SizedBox(
+                              width: 42,
+                              child: Text(
+                                '${fmt2(h)}:00',
+                                style: AppText.caption(size: 9, color: AppColors.muted),
+                                textAlign: TextAlign.right,
                               ),
-                            );
-                          }),
+                            ),
+                          )),
                         ),
                       ),
-                      // Day columns
                       ...days.map((d) {
-                        final dayTimed = timedEvents.where((e) => e.startDay == d).toList();
-                        return SizedBox(
+                        final dayTimed = timedEvts.where((e) => eventIsOnDay(e, d)).toList();
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) {
+                            final tapH = details.localPosition.dy / kHourH;
+                            final hour = tapH.floor().clamp(0, 23);
+                            final minute = ((tapH - hour) * 60).round().clamp(0, 59);
+                            final snappedMinute = (minute ~/ 15) * 15;
+                            onTimeTap(DateTime(d.year, d.month, d.day, hour, snappedMinute));
+                          },
+                          child: SizedBox(
                           width: colW,
                           child: Stack(
+                            fit: StackFit.expand,
                             children: [
-                              // Hour lines
-                              ...List.generate(kDayEnd - kDayStart, (i) => Positioned(
-                                top: i * kHourH.toDouble(),
-                                left: 0,
-                                right: 0,
+                              ...List.generate(24, (h) => Positioned(
+                                top: h * kHourH.toDouble(),
+                                left: 0, right: 0,
                                 child: Divider(
                                   height: 1,
-                                  color: i == 0 ? Colors.transparent : AppColors.border.withOpacity(0.6),
+                                  color: h == 0 ? Colors.transparent : AppColors.border.withOpacity(0.6),
                                 ),
                               )),
-                              // Events
                               ...dayTimed.map((e) {
-                                final topFrac = (e.startHour - kDayStart) + e.startMin / 60.0;
+                                final topFrac = e.startHour + e.startMin / 60.0;
                                 final durH = (e.endHour - e.startHour) + (e.endMin - e.startMin) / 60.0;
                                 final top = topFrac * kHourH;
                                 final height = max(durH * kHourH, 20.0);
                                 return Positioned(
-                                  top: top,
-                                  left: 1,
-                                  right: 1,
-                                  height: height,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: e.color,
-                                      borderRadius: BorderRadius.circular(6),
-                                      boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 4, offset: Offset(0, 1))],
-                                    ),
-                                    child: Text(
-                                      height > 28 ? '${e.title}\n${fmtHm(e.startHour, e.startMin)}' : e.title,
-                                      style: const TextStyle(fontSize: 9, color: Colors.white, height: 1.3),
-                                      overflow: TextOverflow.fade,
+                                  top: top, left: 1, right: 1, height: height,
+                                  child: GestureDetector(
+                                    onTap: () => onEventTap(e),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: e.color,
+                                        borderRadius: BorderRadius.circular(6),
+                                        boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 4, offset: Offset(0, 1))],
+                                      ),
+                                      child: Text(
+                                        height > 28 ? '${e.title}\n${fmtHm(e.startHour, e.startMin)}' : e.title,
+                                        style: const TextStyle(fontSize: 9, color: Colors.white, height: 1.3),
+                                        overflow: TextOverflow.fade,
+                                      ),
                                     ),
                                   ),
                                 );
                               }),
                             ],
+                          ),
                           ),
                         );
                       }),
@@ -504,120 +570,133 @@ class _WeekView extends StatelessWidget {
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
 class _DayView extends StatelessWidget {
-  final int day;
+  final DateTime date;
   final List<CalendarEvent> events;
-  final VoidCallback onAdd;
+  final bool Function(CalendarEvent, DateTime) eventIsOnDay;
+  final ValueChanged<DateTime> onAdd;
+  final ValueChanged<CalendarEvent> onEventTap;
 
-  const _DayView({required this.day, required this.events, required this.onAdd});
+  const _DayView({
+    required this.date,
+    required this.events,
+    required this.eventIsOnDay,
+    required this.onAdd,
+    required this.onEventTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final allDay = events.where((e) => e.allDay && day >= e.startDay && day <= e.endDay).toList();
-    final timed = events.where((e) => !e.allDay && e.startDay == day).toList()
+    final allDay = events.where((e) => e.allDay && eventIsOnDay(e, date)).toList();
+    final timed = events.where((e) => !e.allDay && eventIsOnDay(e, date)).toList()
       ..sort((a, b) => a.startHour != b.startHour ? a.startHour - b.startHour : a.startMin - b.startMin);
+    final all = [...allDay, ...timed];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (allDay.isNotEmpty) ...[
-          Wrap(
-            spacing: 6,
-            children: allDay.map((e) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: e.color, borderRadius: BorderRadius.circular(10)),
-              child: Text(e.title, style: const TextStyle(fontSize: 13, color: Colors.white)),
-            )).toList(),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (timed.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40),
-              child: Column(
-                children: [
-                  Text('今天沒有行程', style: AppText.body(color: AppColors.muted)),
-                  const SizedBox(height: 4),
-                  Text('點下方按鈕新增', style: AppText.caption()),
-                ],
-              ),
-            ),
-          )
-        else
-          ...timed.map((e) {
-            final durMin = (e.endHour - e.startHour) * 60 + (e.endMin - e.startMin);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: const [kCardShadow],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(
-                      width: 3,
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
+            itemCount: all.isEmpty ? 2 : all.length + 1,
+            itemBuilder: (context, i) {
+              // Empty state placeholder
+              if (all.isEmpty && i == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 48, bottom: 20),
+                  child: Center(
+                    child: Text('今天沒有行程', style: AppText.body(color: AppColors.muted)),
+                  ),
+                );
+              }
+              // Add button as last item
+              if (i == all.length || (all.isEmpty && i == 1)) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: GestureDetector(
+                    onTap: () => onAdd(DateTime(date.year, date.month, date.day, 9, 0)),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
                       decoration: BoxDecoration(
-                        color: e.color,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(18),
-                          bottomLeft: Radius.circular(18),
-                        ),
+                        color: AppColors.bg,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.border, width: 1.5),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(LucideIcons.plus, size: 14, color: AppColors.muted),
+                          const SizedBox(width: 6),
+                          Text('新增行程', style: AppText.label(size: 13)),
+                        ],
                       ),
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(e.title, style: AppText.body(size: 14, weight: FontWeight.w500)),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    '${fmtHm(e.startHour, e.startMin)} – ${fmtHm(e.endHour, e.endMin)} · $durMin 分鐘',
-                                    style: AppText.label(size: 12),
-                                  ),
-                                ],
+                  ),
+                );
+              }
+              final e = all[i];
+              return GestureDetector(
+                onTap: () => onEventTap(e),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [kCardShadow],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 5,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: e.color,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            bottomLeft: Radius.circular(16),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                e.title,
+                                style: AppText.body(size: 15, weight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            Container(
-                              width: 9,
-                              height: 9,
-                              decoration: BoxDecoration(color: e.color, shape: BoxShape.circle),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              if (e.allDay)
+                                Text('全天', style: AppText.caption(size: 12))
+                              else
+                                Text(
+                                  '${fmtHm(e.startHour, e.startMin)} – ${fmtHm(e.endHour, e.endMin)}',
+                                  style: AppText.caption(size: 12),
+                                ),
+                              if (e.location != null && e.location!.isNotEmpty) ...[
+                                const SizedBox(height: 3),
+                                Row(children: [
+                                  const Icon(LucideIcons.mapPin, size: 11, color: AppColors.muted),
+                                  const SizedBox(width: 4),
+                                  Expanded(child: Text(e.location!, style: AppText.caption(size: 11), overflow: TextOverflow.ellipsis)),
+                                ]),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      const Padding(
+                        padding: EdgeInsets.only(right: 14),
+                        child: Icon(LucideIcons.chevronRight, size: 14, color: AppColors.muted),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }),
-        const SizedBox(height: 8),
-        GestureDetector(
-          onTap: onAdd,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 13),
-            decoration: BoxDecoration(
-              color: AppColors.bg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border, width: 1.5),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(LucideIcons.plus, size: 14, color: AppColors.muted),
-                const SizedBox(width: 6),
-                Text('新增行程', style: AppText.label(size: 13)),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ],
@@ -628,10 +707,9 @@ class _DayView extends StatelessWidget {
 // ─── Add Event Modal ──────────────────────────────────────────────────────────
 
 class _AddEventModal extends StatefulWidget {
-  final int? selectedDay;
+  final DateTime selectedDate;
   final ValueChanged<CalendarEvent> onSave;
-
-  const _AddEventModal({this.selectedDay, required this.onSave});
+  const _AddEventModal({required this.selectedDate, required this.onSave});
 
   @override
   State<_AddEventModal> createState() => _AddEventModalState();
@@ -639,88 +717,78 @@ class _AddEventModal extends StatefulWidget {
 
 class _AddEventModalState extends State<_AddEventModal> {
   final _titleCtrl = TextEditingController();
-  final _rangeCtrl = TextEditingController();
-  int _startDay = 24, _startHour = 9, _startMin = 0;
-  int _endDay = 24, _endHour = 10, _endMin = 0;
+  final _descCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
+  late DateTime _startDt;
+  late DateTime _endDt;
   Color _color = AppColors.sage;
-  Map<String, int>? _parsed;
+  bool _allDay = false;
 
   static const _colors = [AppColors.sage, AppColors.amber, AppColors.blue, AppColors.rose, AppColors.dark];
 
   @override
   void initState() {
     super.initState();
-    if (widget.selectedDay != null) _startDay = _endDay = widget.selectedDay!;
-    _rangeCtrl.addListener(_onRangeChanged);
+    final d = widget.selectedDate;
+    // If hour/min were explicitly provided (non-zero or user tapped a timeslot), use them; else default 9:00
+    final hasTime = d.hour != 0 || d.minute != 0;
+    _startDt = DateTime(d.year, d.month, d.day, hasTime ? d.hour : 9, hasTime ? d.minute : 0);
+    _endDt = _startDt.add(const Duration(hours: 1));
   }
 
   @override
   void dispose() {
     _titleCtrl.dispose();
-    _rangeCtrl.dispose();
+    _descCtrl.dispose();
+    _locationCtrl.dispose();
     super.dispose();
   }
 
-  void _onRangeChanged() {
-    final p = parseEventRange(_rangeCtrl.text);
+  Future<void> _pickStartDate() async {
+    final d = await showDatePicker(context: context, initialDate: _startDt, firstDate: DateTime(2020), lastDate: DateTime(2035));
+    if (d == null || !mounted) return;
     setState(() {
-      _parsed = p;
-      if (p != null) {
-        _startDay = p['startDay']!;
-        _startHour = p['startHour']!;
-        _startMin = p['startMin']!;
-        _endDay = p['endDay']!;
-        _endHour = p['endHour']!;
-        _endMin = p['endMin']!;
-      }
+      _startDt = DateTime(d.year, d.month, d.day, _startDt.hour, _startDt.minute);
+      if (_endDt.isBefore(_startDt)) _endDt = _startDt.add(const Duration(hours: 1));
     });
   }
 
+  Future<void> _pickStartTime() async {
+    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_startDt));
+    if (t == null || !mounted) return;
+    setState(() {
+      _startDt = DateTime(_startDt.year, _startDt.month, _startDt.day, t.hour, t.minute);
+      if (_endDt.isBefore(_startDt)) _endDt = _startDt.add(const Duration(hours: 1));
+    });
+  }
+
+  Future<void> _pickEndDate() async {
+    final d = await showDatePicker(context: context, initialDate: _endDt, firstDate: _startDt, lastDate: DateTime(2035));
+    if (d == null || !mounted) return;
+    setState(() => _endDt = DateTime(d.year, d.month, d.day, _endDt.hour, _endDt.minute));
+  }
+
+  Future<void> _pickEndTime() async {
+    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_endDt));
+    if (t == null || !mounted) return;
+    setState(() => _endDt = DateTime(_endDt.year, _endDt.month, _endDt.day, t.hour, t.minute));
+  }
+
   void _save() {
-    if (_titleCtrl.text.isEmpty) return;
+    if (_titleCtrl.text.trim().isEmpty) return;
     final e = CalendarEvent(
       id: 0,
-      title: _titleCtrl.text,
-      startDay: _startDay, startHour: _startHour, startMin: _startMin,
-      endDay: _endDay, endHour: _endHour, endMin: _endMin,
-      color: _color,
+      title: _titleCtrl.text.trim(),
+      startYear: _startDt.year, startMonth: _startDt.month, startDay: _startDt.day,
+      startHour: _allDay ? 0 : _startDt.hour, startMin: _allDay ? 0 : _startDt.minute,
+      endYear: _endDt.year, endMonth: _endDt.month, endDay: _endDt.day,
+      endHour: _allDay ? 23 : _endDt.hour, endMin: _allDay ? 59 : _endDt.minute,
+      color: _color, allDay: _allDay,
+      description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      location: _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
     );
     widget.onSave(e);
     Navigator.pop(context);
-  }
-
-  Widget _numInput(String label, int value, ValueChanged<int> onChanged, {int min = 0, int max = 59, int step = 1}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppText.caption(size: 11)),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.bg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () { if (value - step >= min) onChanged(value - step); },
-                child: const Icon(LucideIcons.minus, size: 12, color: AppColors.muted),
-              ),
-              const SizedBox(width: 8),
-              Text(fmt2(value), style: AppText.body(size: 13, weight: FontWeight.w500)),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () { if (value + step <= max) onChanged(value + step); },
-                child: const Icon(LucideIcons.plus, size: 12, color: AppColors.muted),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
   }
 
   @override
@@ -729,105 +797,80 @@ class _AddEventModalState extends State<_AddEventModal> {
     return Padding(
       padding: EdgeInsets.only(bottom: insets),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 36, height: 4,
-                  decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(4)),
-                ),
-              ),
+              Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(4)))),
               const SizedBox(height: 20),
-
-              // Title
               Text('標題', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
               const SizedBox(height: 6),
               TextField(
                 controller: _titleCtrl,
                 decoration: InputDecoration(
-                  hintText: '行程名稱',
-                  hintStyle: AppText.body(color: AppColors.muted),
-                  filled: true,
-                  fillColor: AppColors.bg,
+                  hintText: '行程名稱', hintStyle: AppText.body(color: AppColors.muted),
+                  filled: true, fillColor: AppColors.bg,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 ),
-                style: AppText.body(size: 14),
-                onSubmitted: (_) => _save(),
+                style: AppText.body(size: 14), onSubmitted: (_) => _save(),
               ),
-              const SizedBox(height: 16),
-
-              // Quick range
-              Text('快速輸入時間範圍', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
+              const SizedBox(height: 14),
+              Row(children: [
+                Text('全天活動', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
+                const Spacer(),
+                Switch(value: _allDay, onChanged: (v) => setState(() => _allDay = v), activeColor: AppColors.dark),
+              ]),
+              const SizedBox(height: 10),
+              Text('開始時間', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(child: _DateTimeChip(label: '${_startDt.year}/${fmt2(_startDt.month)}/${fmt2(_startDt.day)}', icon: LucideIcons.calendar, onTap: _pickStartDate)),
+                if (!_allDay) ...[
+                  const SizedBox(width: 8),
+                  Expanded(child: _DateTimeChip(label: fmtHm(_startDt.hour, _startDt.minute), icon: LucideIcons.clock, onTap: _pickStartTime)),
+                ],
+              ]),
+              const SizedBox(height: 10),
+              Text('結束時間', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(child: _DateTimeChip(label: '${_endDt.year}/${fmt2(_endDt.month)}/${fmt2(_endDt.day)}', icon: LucideIcons.calendar, onTap: _pickEndDate)),
+                if (!_allDay) ...[
+                  const SizedBox(width: 8),
+                  Expanded(child: _DateTimeChip(label: fmtHm(_endDt.hour, _endDt.minute), icon: LucideIcons.clock, onTap: _pickEndTime)),
+                ],
+              ]),
+              const SizedBox(height: 14),
+              Text('地點', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
               const SizedBox(height: 6),
               TextField(
-                controller: _rangeCtrl,
+                controller: _locationCtrl,
                 decoration: InputDecoration(
-                  hintText: '例：4/24 9:00 - 4/24 10:00',
-                  hintStyle: AppText.body(size: 13, color: AppColors.muted),
-                  filled: true,
-                  fillColor: AppColors.bg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(
-                      color: _parsed != null ? AppColors.sage : Colors.transparent,
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(
-                      color: _parsed != null ? AppColors.sage : Colors.transparent,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(
-                      color: _parsed != null ? AppColors.sage : AppColors.border,
-                    ),
-                  ),
-                  suffixIcon: _parsed != null
-                      ? const Icon(LucideIcons.circleCheck, color: AppColors.sage, size: 18)
-                      : null,
+                  hintText: '新增地點', hintStyle: AppText.body(color: AppColors.muted),
+                  filled: true, fillColor: AppColors.bg,
+                  prefixIcon: const Icon(LucideIcons.mapPin, size: 16, color: AppColors.muted),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 ),
                 style: AppText.body(size: 13),
               ),
-              if (_parsed != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    '${_parsed!['startDay']}日 ${fmtHm(_parsed!['startHour']!, _parsed!['startMin']!)} → ${_parsed!['endDay']}日 ${fmtHm(_parsed!['endHour']!, _parsed!['endMin']!)}',
-                    style: AppText.caption(color: AppColors.sage),
-                  ),
+              const SizedBox(height: 12),
+              Text('備註', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _descCtrl, maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: '新增備註說明', hintStyle: AppText.body(color: AppColors.muted),
+                  filled: true, fillColor: AppColors.bg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 ),
-              const SizedBox(height: 16),
-
-              // Manual pickers
-              Text('手動設定時間', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _numInput('開始日', _startDay, (v) => setState(() => _startDay = v), min: 1, max: 30),
-                  _numInput('結束日', _endDay, (v) => setState(() => _endDay = v), min: 1, max: 30),
-                  _numInput('開始時', _startHour, (v) => setState(() => _startHour = v), min: 0, max: 23),
-                  _numInput('開始分', _startMin, (v) => setState(() => _startMin = v), min: 0, max: 59, step: 15),
-                  _numInput('結束時', _endHour, (v) => setState(() => _endHour = v), min: 0, max: 23),
-                  _numInput('結束分', _endMin, (v) => setState(() => _endMin = v), min: 0, max: 59, step: 15),
-                ],
+                style: AppText.body(size: 13),
               ),
-              const SizedBox(height: 16),
-
-              // Color picker
+              const SizedBox(height: 14),
               Text('顏色', style: AppText.label(size: 12, weight: FontWeight.w500, color: AppColors.dark)),
               const SizedBox(height: 8),
               Row(
@@ -838,32 +881,21 @@ class _AddEventModalState extends State<_AddEventModal> {
                     width: 32, height: 32,
                     margin: const EdgeInsets.only(right: 10),
                     decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _color == c ? AppColors.dark : Colors.transparent,
-                        width: 3,
-                      ),
+                      color: c, shape: BoxShape.circle,
+                      border: Border.all(color: _color == c ? AppColors.dark : Colors.transparent, width: 3),
                     ),
                   ),
                 )).toList(),
               ),
               const SizedBox(height: 24),
-
-              // Save button
               SizedBox(
                 width: double.infinity,
                 child: GestureDetector(
                   onTap: _save,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppColors.dark,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: Text('儲存行程', style: AppText.body(size: 15, weight: FontWeight.w600, color: Colors.white)),
-                    ),
+                    decoration: BoxDecoration(color: AppColors.dark, borderRadius: BorderRadius.circular(16)),
+                    child: Center(child: Text('儲存行程', style: AppText.body(size: 15, weight: FontWeight.w600, color: Colors.white))),
                   ),
                 ),
               ),
@@ -874,3 +906,180 @@ class _AddEventModalState extends State<_AddEventModal> {
     );
   }
 }
+
+// ─── Day Events Sheet ─────────────────────────────────────────────────────────
+
+class _DayEventsSheet extends StatelessWidget {
+  final DateTime date;
+  final List<CalendarEvent> events;
+  final ValueChanged<CalendarEvent> onEventTap;
+  final VoidCallback onAddTap;
+
+  const _DayEventsSheet({required this.date, required this.events, required this.onEventTap, required this.onAddTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(4)))),
+          const SizedBox(height: 16),
+          Text('${date.year}年${kMonthNames[date.month - 1]}${date.day}日', style: AppText.body(size: 16, weight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          ...events.map((e) => GestureDetector(
+            onTap: () => onEventTap(e),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), boxShadow: const [kCardShadow]),
+              child: Row(
+                children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: e.color, shape: BoxShape.circle)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(e.title, style: AppText.body(size: 14, weight: FontWeight.w500)),
+                      if (!e.allDay) Text('${fmtHm(e.startHour, e.startMin)} – ${fmtHm(e.endHour, e.endMin)}', style: AppText.caption(size: 12)),
+                    ],
+                  )),
+                  const Icon(LucideIcons.chevronRight, size: 14, color: AppColors.muted),
+                ],
+              ),
+            ),
+          )),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: onAddTap,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              decoration: BoxDecoration(
+                color: AppColors.bg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border, width: 1.5),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const Icon(LucideIcons.plus, size: 14, color: AppColors.muted),
+                const SizedBox(width: 6),
+                Text('新增行程', style: AppText.label(size: 13)),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Event Detail Sheet ───────────────────────────────────────────────────────
+
+class _EventDetailSheet extends StatelessWidget {
+  final CalendarEvent event;
+  const _EventDetailSheet({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final durMin = (event.endHour - event.startHour) * 60 + (event.endMin - event.startMin);
+    return Container(
+      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(4)))),
+          const SizedBox(height: 20),
+          Row(children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: event.color, shape: BoxShape.circle)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(event.title, style: AppText.body(size: 18, weight: FontWeight.w600))),
+          ]),
+          const SizedBox(height: 16),
+          if (!event.allDay)
+            _DetailRow(icon: LucideIcons.clock, text: '${event.startYear}年${kMonthNames[event.startMonth - 1]}${event.startDay}日  ${fmtHm(event.startHour, event.startMin)} – ${fmtHm(event.endHour, event.endMin)}  （$durMin 分鐘）')
+          else
+            _DetailRow(icon: LucideIcons.calendar, text: '全天  ${event.startYear}年${kMonthNames[event.startMonth - 1]}${event.startDay}日 – ${kMonthNames[event.endMonth - 1]}${event.endDay}日'),
+          if (event.location != null && event.location!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _DetailRow(icon: LucideIcons.mapPin, text: event.location!),
+          ],
+          if (event.description != null && event.description!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _DetailRow(icon: LucideIcons.alignLeft, text: event.description!),
+          ],
+          const SizedBox(height: 24),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(color: AppColors.dark, borderRadius: BorderRadius.circular(16)),
+              child: Center(child: Text('關閉', style: AppText.body(size: 15, weight: FontWeight.w600, color: Colors.white))),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _DetailRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: AppColors.muted),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: AppText.body(size: 13, color: AppColors.muted))),
+      ],
+    );
+  }
+}
+
+// ─── DateTime Chip ────────────────────────────────────────────────────────────
+
+class _DateTimeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _DateTimeChip({required this.label, required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: AppColors.muted),
+            const SizedBox(width: 6),
+            Flexible(child: Text(label, style: AppText.body(size: 13, weight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+

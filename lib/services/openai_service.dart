@@ -22,18 +22,25 @@ class ClassifiedTodo extends ClassificationResult {
 class ClassifiedTodoWithTime extends ClassificationResult {
   final String text;
   final String cat;
-  final int startDay, startHour, startMin;
-  final int endDay, endHour, endMin;
+  final int startYear, startMonth, startDay, startHour, startMin;
+  final int endYear, endMonth, endDay, endHour, endMin;
   ClassifiedTodoWithTime({
     required this.text,
     required this.cat,
+    int? startYear,
+    int? startMonth,
     required this.startDay,
     required this.startHour,
     required this.startMin,
+    int? endYear,
+    int? endMonth,
     required this.endDay,
     required this.endHour,
     required this.endMin,
-  });
+  })  : startYear = startYear ?? DateTime.now().year,
+        startMonth = startMonth ?? DateTime.now().month,
+        endYear = endYear ?? DateTime.now().year,
+        endMonth = endMonth ?? DateTime.now().month;
 }
 
 class ClassifiedIdea extends ClassificationResult {
@@ -184,12 +191,12 @@ class OpenAIService {
           return ClassifiedTodoWithTime(
             text: j['text'] as String? ?? rawText,
             cat: _safecat(j['cat']),
-            startDay: (j['start_day'] as num?)?.toInt() ?? 24,
-            startHour: (j['start_hour'] as num?)?.toInt() ?? 9,
-            startMin: (j['start_min'] as num?)?.toInt() ?? 0,
-            endDay: (j['end_day'] as num?)?.toInt() ?? 24,
-            endHour: (j['end_hour'] as num?)?.toInt() ?? 10,
-            endMin: (j['end_min'] as num?)?.toInt() ?? 0,
+            startDay:   (j['start_day']   as num?)?.toInt() ?? DateTime.now().day,
+            startHour:  (j['start_hour']  as num?)?.toInt() ?? 9,
+            startMin:   (j['start_min']   as num?)?.toInt() ?? 0,
+            endDay:     (j['end_day']     as num?)?.toInt() ?? DateTime.now().day,
+            endHour:    (j['end_hour']    as num?)?.toInt() ?? 10,
+            endMin:     (j['end_min']     as num?)?.toInt() ?? 0,
           );
 
         case 'idea':

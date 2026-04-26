@@ -84,12 +84,12 @@ class SeedData {
   ];
 
   static List<TodoItem> get initTodos => [
-    const TodoItem(id: 1, text: '整理研究筆記', done: false, cat: '學習', color: AppColors.sage),
-    const TodoItem(id: 2, text: '回覆 Lucas 的信件', done: true, cat: '工作', color: AppColors.blue),
-    const TodoItem(id: 3, text: '買燕麥和堅果', done: false, cat: '個人', color: AppColors.rose),
-    const TodoItem(id: 4, text: '完成原型設計稿', done: false, cat: '工作', color: AppColors.blue),
-    const TodoItem(id: 5, text: '預約牙醫', done: true, cat: '健康', color: AppColors.amber),
-    const TodoItem(id: 6, text: '讀《原子習慣》第三章', done: false, cat: '學習', color: AppColors.sage),
+    const TodoItem(id: 1, text: '整理研究筆記', done: false, cat: '學習', color: AppColors.sage, priority: 2),
+    const TodoItem(id: 2, text: '回覆 Lucas 的信件', done: true, cat: '工作', color: AppColors.blue, priority: 1),
+    const TodoItem(id: 3, text: '買燕麥和堅果', done: false, cat: '個人', color: AppColors.rose, priority: 4),
+    const TodoItem(id: 4, text: '完成原型設計稿', done: false, cat: '工作', color: AppColors.blue, priority: 1),
+    const TodoItem(id: 5, text: '預約牙醫', done: true, cat: '健康', color: AppColors.amber, priority: 3),
+    const TodoItem(id: 6, text: '讀《原子習慣》第三章', done: false, cat: '學習', color: AppColors.sage, priority: 3),
   ];
 
   static List<Idea> get initIdeas => [
