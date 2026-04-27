@@ -171,7 +171,6 @@ if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
 
 | Method | Temp | Tokens | Purpose |
 |--------|------|--------|---------|
-| `classifyInput` | 0.2 | 200 | Routes single free-text input to the correct tab (legacy path) |
 | `classifyMultiInput` | 0.2 | 800 | Multi-modal multi-item classification — text + images + file text → `List<ClassificationResult>` |
 | `transcribeAudio` | — | — | Sends audio bytes to Whisper (`whisper-1`) and returns the transcript |
 | `chat` | 0.7 | 600 | Conversational assistant with tool-calling (9 CRUD tools, multi-round loop), live DB context, user self-intro, and AI instructions |

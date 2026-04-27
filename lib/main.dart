@@ -66,6 +66,7 @@ class MyRoomShell extends StatefulWidget {
 
 class _MyRoomShellState extends State<MyRoomShell> {
   int _activeTab = 0;
+  late final PageController _pageController;
   List<CalendarEvent> _events = [];
   List<TodoItem> _todos = [];
   List<TodoCategory> _categories = [];
@@ -78,7 +79,14 @@ class _MyRoomShellState extends State<MyRoomShell> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _activeTab);
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAll() async {
@@ -288,7 +296,6 @@ class _MyRoomShellState extends State<MyRoomShell> {
   }
 
   Widget _buildPageTitle() {
-    if (_activeTab == 0 || _activeTab == 4) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
       child: Column(
@@ -300,6 +307,11 @@ class _MyRoomShellState extends State<MyRoomShell> {
         ],
       ),
     );
+  }
+
+  void _jumpToTab(int i) {
+    setState(() => _activeTab = i);
+    _pageController.jumpToPage(i);
   }
 
   @override
@@ -328,11 +340,19 @@ class _MyRoomShellState extends State<MyRoomShell> {
                 _buildPageTitle(),
                 Expanded(
                   child: ClipRect(
-                    child: IndexedStack(
-                      index: _activeTab,
+                    child: PageView(
+                      controller: _pageController,
+                      // Disable swipe while an overlay is open to prevent
+                      // accidental page switches behind the overlay.
+                      physics: _overlay != _Overlay.none
+                          ? const NeverScrollableScrollPhysics()
+                          : const PageScrollPhysics(),
+                      onPageChanged: (i) {
+                        if (_activeTab != i) setState(() => _activeTab = i);
+                      },
                       children: [
-                        CalendarPage(events: _events, onEventAdded: _onEventAdded, onEventDeleted: _onEventDeleted),
-                        TodoPage(
+                        _KeepAlive(child: CalendarPage(events: _events, onEventAdded: _onEventAdded, onEventDeleted: _onEventDeleted)),
+                        _KeepAlive(child: TodoPage(
                           todos: _todos,
                           categories: _categories,
                           onTodoAdded: _onTodoAdded,
@@ -340,17 +360,17 @@ class _MyRoomShellState extends State<MyRoomShell> {
                           onTodoDeleted: _onTodoDeleted,
                           onCategoryAdded: _onCategoryAdded,
                           onCategoryDeleted: _onCategoryDeleted,
-                        ),
-                        IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded, onIdeaDeleted: _onIdeaDeleted),
-                        NotePage(notes: _notes, onNotesMutated: _onNotesMutated),
-                        RecapPage(
-                          onNavTo: (tab) => setState(() => _activeTab = tab),
+                        )),
+                        _KeepAlive(child: IdeaPage(ideas: _ideas, onIdeaAdded: _onIdeaAdded, onIdeaDeleted: _onIdeaDeleted)),
+                        _KeepAlive(child: NotePage(notes: _notes, onNotesMutated: _onNotesMutated)),
+                        _KeepAlive(child: RecapPage(
+                          onNavTo: _jumpToTab,
                           todos: _todos,
                           events: _events,
                           ideas: _ideas,
                           notes: _notes,
                           recapItems: _recapItems,
-                        ),
+                        )),
                       ],
                     ),
                   ),
@@ -375,14 +395,34 @@ class _MyRoomShellState extends State<MyRoomShell> {
                 bottom: 22, left: 20, right: 20,
                 child: BottomNavBar(
                   activeIndex: _activeTab,
-                  onTap: (i) => setState(() {
-                    _activeTab = i;
-                  }),
+                  onTap: _jumpToTab,
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+}
+
+/// Wraps a page widget so the PageView keeps it alive after the first visit,
+/// exactly like IndexedStack — no per-page mixin changes required.
+class _KeepAlive extends StatefulWidget {
+  final Widget child;
+  const _KeepAlive({required this.child});
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // required by the mixin
+    return widget.child;
   }
 }

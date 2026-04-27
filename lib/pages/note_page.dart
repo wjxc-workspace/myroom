@@ -532,17 +532,9 @@ class _NotePageState extends State<NotePage> {
         // Month / year navigation
         Row(
           children: [
-            GestureDetector(
-              onTap: () => setState(() {
-                _year = DateTime.now().year;
-                _month = DateTime.now().month - 1; // 0-indexed
-                _day = DateTime.now().day;
-                _selectDay(_day , '$_year-${fmt2(_month + 1)}-${fmt2(_day)}');
-              }),
-              child: Text(
-                '$_year年${kMonthNames[_month]}',
-                style: AppText.display(size: 22, weight: FontWeight.w500),
-              ),
+            Text(
+              '$_year年${_month + 1}月',
+              style: AppText.body(size: 16, weight: FontWeight.w500),
             ),
             const Spacer(),
             if (_classifyingNote) ...[

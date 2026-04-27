@@ -6,7 +6,6 @@ import '../models/recap_item.dart';
 import '../theme.dart';
 
 const kDow = ['日', '一', '二', '三', '四', '五', '六'];
-const kMonthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
 const kEraLabel = {Era.past: '過去', Era.now: '現在', Era.future: '未來'};
 const kEraColor = {

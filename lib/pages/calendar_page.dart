@@ -53,13 +53,13 @@ class _CalendarPageState extends State<CalendarPage> {
   String get _headerLabel {
     switch (_view) {
       case CalendarView.month:
-        return '${_focusDate.year}年${kMonthNames[_focusDate.month - 1]}';
+        return '${_focusDate.year}年${_focusDate.month}月';
       case CalendarView.week:
         final ws = _weekStart;
         final we = ws.add(const Duration(days: 6));
         return '${ws.month}/${ws.day}–${we.month}/${we.day}';
       case CalendarView.day:
-        return '${_focusDate.year}年${kMonthNames[_focusDate.month - 1]}${_focusDate.day}日';
+        return '${_focusDate.month}月${_focusDate.day}日';
     }
   }
 
@@ -80,10 +80,6 @@ class _CalendarPageState extends State<CalendarPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 22, 8),
-          child: Text('行事曆', style: AppText.display()),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
           child: Row(
@@ -936,7 +932,7 @@ class _DayEventsSheet extends StatelessWidget {
         children: [
           Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(4)))),
           const SizedBox(height: 16),
-          Text('${date.year}年${kMonthNames[date.month - 1]}${date.day}日', style: AppText.body(size: 16, weight: FontWeight.w600)),
+          Text('${date.year}年${date.month}月${date.day}日', style: AppText.body(size: 16, weight: FontWeight.w600)),
           const SizedBox(height: 12),
           ...events.map((e) => GestureDetector(
             onTap: () => onEventTap(e),
@@ -1030,9 +1026,9 @@ class _EventDetailSheet extends StatelessWidget {
           ]),
           const SizedBox(height: 16),
           if (!event.allDay)
-            _DetailRow(icon: LucideIcons.clock, text: '${event.startYear}年${kMonthNames[event.startMonth - 1]}${event.startDay}日  ${fmtHm(event.startHour, event.startMin)} – ${fmtHm(event.endHour, event.endMin)}  （$durMin 分鐘）')
+            _DetailRow(icon: LucideIcons.clock, text: '${event.startYear}年${event.startMonth}月${event.startDay}日  ${fmtHm(event.startHour, event.startMin)} – ${fmtHm(event.endHour, event.endMin)}  （$durMin 分鐘）')
           else
-            _DetailRow(icon: LucideIcons.calendar, text: '全天  ${event.startYear}年${kMonthNames[event.startMonth - 1]}${event.startDay}日 – ${kMonthNames[event.endMonth - 1]}${event.endDay}日'),
+            _DetailRow(icon: LucideIcons.calendar, text: '全天  ${event.startYear}年${event.startMonth}月${event.startDay}日 – ${event.endMonth}月${event.endDay}日'),
           if (event.location != null && event.location!.isNotEmpty) ...[
             const SizedBox(height: 10),
             _DetailRow(icon: LucideIcons.mapPin, text: event.location!),
