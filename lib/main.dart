@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'db_init_native.dart'
+    if (dart.library.html) 'db_init_web.dart';
 import 'theme.dart';
 import 'models/event.dart';
 import 'models/todo_item.dart';
@@ -23,12 +23,9 @@ import 'pages/setting_page.dart';
 import 'overlays/add_overlay.dart';
 import 'overlays/ai_chat_overlay.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+  await initDatabaseFactory();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
