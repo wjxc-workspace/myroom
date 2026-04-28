@@ -182,6 +182,14 @@ class DatabaseService {
       });
     }
 
+    for (final c in SeedData.initCategories) {
+      await db.insert('categories', {
+        'id': c.id,
+        'name': c.name,
+        'color': c.color.toARGB32(),
+      });
+    }
+
     for (final t in SeedData.initTodos) {
       await db.insert('todos', {
         'text': t.text,
@@ -221,16 +229,14 @@ class DatabaseService {
       });
     }
 
-    // Seed default note categories
-    const defaultCats = [
-      ('undefined', '未分類',  'tag',      0xFF9E9E9E, 0xFFF5F0E8, 0),
-      ('diary',     '日記',    'pencil',   0xFFBF7A8E, 0xFFF5EEF0, 1),
-      ('academic',  '學術',    'fileText', 0xFF7A8EBF, 0xFFEEF0F5, 2),
-    ];
-    for (final (id, label, icon, color, bg, order) in defaultCats) {
+    for (final nc in SeedData.initNoteCategories) {
       await db.insert('note_categories', {
-        'id': id, 'label': label, 'icon_name': icon,
-        'color_val': color, 'bg_val': bg, 'sort_order': order,
+        'id': nc.id,
+        'label': nc.label,
+        'icon_name': nc.iconName,
+        'color_val': nc.color.toARGB32(),
+        'bg_val': nc.bg.toARGB32(),
+        'sort_order': nc.sortOrder,
       });
     }
   }

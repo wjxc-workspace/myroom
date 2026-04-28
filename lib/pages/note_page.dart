@@ -688,7 +688,7 @@ class _NotePageState extends State<NotePage> {
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () async {
-                          _noteCtrl?.clear(); // fix: clears the visible text field
+                          _noteCtrl?.clear();
                           setState(() => _editorContent = '');
                           await DatabaseService.instance.upsertNote(_noteKey, '');
                           widget.onNotesMutated();
@@ -941,6 +941,7 @@ class _NoteEditor extends StatelessWidget {
     return TextField(
       controller: controller,
       maxLines: 6,
+      scrollPadding: const EdgeInsets.only(bottom: 120.0),
       decoration: InputDecoration(
         hintText: '在這裡寫下今天的筆記...',
         hintStyle: AppText.body(color: AppColors.muted),

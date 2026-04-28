@@ -259,7 +259,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
     }
   }
 
-  static const _pageTitles = ['行事曆', '待辦', '靈感', '筆記', '回顧'];
+  static const _pageTitles = ['行事曆', '待辦', '靈感', '札記', '回顧'];
 
   Widget _buildTopBar() {
     return Padding(

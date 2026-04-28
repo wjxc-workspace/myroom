@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:myroom/models/note_item.dart';
 import '../models/event.dart';
 import '../models/todo_item.dart';
 import '../models/idea.dart';
@@ -82,6 +83,13 @@ class SeedData {
     const CalendarEvent(id: 6, title: '團隊活動', startYear: 2026, startMonth: 4, startDay: 22, startHour: 0, startMin: 0, endYear: 2026, endMonth: 4, endDay: 24, endHour: 23, endMin: 59, color: AppColors.blue, allDay: true),
   ];
 
+  static List<TodoCategory> get initCategories => [
+    const TodoCategory(id: 1, name: '工作', color: AppColors.blue),
+    const TodoCategory(id: 2, name: '學習', color: AppColors.sage),
+    const TodoCategory(id: 3, name: '個人', color: AppColors.rose),
+    const TodoCategory(id: 4, name: '健康', color: AppColors.amber)
+  ];
+
   static List<TodoItem> get initTodos => [
     const TodoItem(id: 1, text: '整理研究筆記', done: false, cat: '學習', color: AppColors.sage, priority: 2),
     const TodoItem(id: 2, text: '回覆 Lucas 的信件', done: true, cat: '工作', color: AppColors.blue, priority: 1),
@@ -95,6 +103,11 @@ class SeedData {
     const Idea(id: 1, text: '用 AI 自動整理待辦事項優先順序'),
     const Idea(id: 2, text: '為每週習慣設計視覺化熱力圖'),
     const Idea(id: 3, text: '靜心日記與情緒追蹤整合'),
+  ];
+
+  static List<NoteCategory> get initNoteCategories => [
+    const NoteCategory(id: 'undefined', label: '未分類', iconName: 'tag', color: Color(0xFFBFA97A), bg: Color(0xFFFFF8ED), sortOrder: 0),
+    const NoteCategory(id: 'diary', label: '日記', iconName: 'pencil', color: Color(0xFFBF7A8E), bg: Color(0xFFF5EEF0), sortOrder: 1),
   ];
 
   static Map<String, String> get initNotes => {

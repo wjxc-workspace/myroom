@@ -15,15 +15,6 @@ const _kPriorityColors = {
   4: AppColors.muted,
 };
 
-// Built-in categories (always available)
-const _kBuiltinCats = ['工作', '學習', '個人', '健康'];
-const _kBuiltinColors = {
-  '工作': AppColors.blue,
-  '學習': AppColors.sage,
-  '個人': AppColors.rose,
-  '健康': AppColors.amber,
-};
-
 enum _SortMode { priority, time }
 
 class TodoPage extends StatefulWidget {
@@ -71,11 +62,10 @@ class _TodoPageState extends State<TodoPage> {
   // All category names (builtin + custom)
   List<String> get _allCatNames {
     final custom = widget.categories.map((c) => c.name).toList();
-    return ['全部', ..._kBuiltinCats, ...custom];
+    return ['全部', ...custom];
   }
 
   Color _colorForCat(String cat) {
-    if (_kBuiltinColors.containsKey(cat)) return _kBuiltinColors[cat]!;
     final found = widget.categories.where((c) => c.name == cat).firstOrNull;
     return found?.color ?? AppColors.muted;
   }
@@ -219,12 +209,12 @@ class _TodoPageState extends State<TodoPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _showDone ? LucideIcons.eyeOff : LucideIcons.eye,
+                        _showDone ? LucideIcons.eye : LucideIcons.eyeOff,
                         size: 13, color: _showDone ? Colors.white : AppColors.muted,
                       ),
                       const SizedBox(width: 5),
                       Text(
-                        '已完成',
+                        _showDone ? '顯示已完成' : '隱藏已完成',
                         style: AppText.caption(
                           size: 12, weight: FontWeight.w500,
                           color: _showDone ? Colors.white : AppColors.muted,
@@ -414,6 +404,7 @@ class _TodoPageState extends State<TodoPage> {
                     controller: _newTextCtrl,
                     focusNode: _addFocus,
                     maxLines: 2,
+                    scrollPadding: const EdgeInsets.only(bottom: 120.0),
                     decoration: InputDecoration(
                       hintText: '新增任務...',
                       hintStyle: AppText.body(color: AppColors.muted),
@@ -430,12 +421,6 @@ class _TodoPageState extends State<TodoPage> {
                   Wrap(
                     spacing: 7, runSpacing: 6,
                     children: [
-                      ..._kBuiltinCats.map((name) => _CatChip(
-                        label: name,
-                        color: _kBuiltinColors[name]!,
-                        selected: _newCat == name,
-                        onTap: () => setState(() => _newCat = name),
-                      )),
                       ...widget.categories.map((c) => _CatChip(
                         label: c.name,
                         color: c.color,

@@ -241,6 +241,7 @@ class _IdeaPageState extends State<IdeaPage> {
               TextField(
                 controller: _draftCtrl,
                 maxLines: 2,
+                scrollPadding: const EdgeInsets.only(bottom: 120.0),
                 decoration: InputDecoration(
                   hintText: '記下你的靈感...',
                   hintStyle: AppText.body(color: AppColors.muted),

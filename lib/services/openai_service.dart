@@ -378,7 +378,7 @@ class OpenAIService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
-              'model': AppConfig.openAiModel,
+              'model': AppConfig.openAiWebSearchModel,
               'messages': [
                 {'role': 'system', 'content': _enrichSystemPrompt},
                 {'role': 'user', 'content': ideaText},
@@ -711,7 +711,7 @@ class OpenAIService {
 
     final today = _todayStr();
     final categories = await DatabaseService.instance.getCategories();
-    final systemContent = '$_multiClassifySystemPrompt\n今天日期：$today\ncat只能是：${categories.map((c) => c.name).join('|')}';
+    final systemContent = '$_multiClassifySystemPrompt\n今天日期：$today\n- cat只能是：${categories.map((c) => c.name).join('|')}';
 
     // Build user message content: text part + optional image parts
     final List<Map<String, dynamic>> userContent = [
@@ -783,7 +783,7 @@ class OpenAIService {
     final validCat = await DatabaseService.instance.getCategories();
     String safecat(dynamic v) {
       final s = v as String? ?? '';
-      return validCat.map((c) => c.name).contains(s) ? s : validCat.isNotEmpty ? validCat[0].name : '';
+      return validCat.map((c) => c.name).contains(s) ? s : validCat.isEmpty ? validCat[0].name : '';
     }
 
     switch (type) {
