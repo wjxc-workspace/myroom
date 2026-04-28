@@ -128,6 +128,8 @@ class OpenAIService {
             'end_day':     <String, dynamic>{'type': 'integer', 'description': '結束日'},
             'end_hour':    <String, dynamic>{'type': 'integer', 'description': '結束小時（24h）'},
             'end_min':     <String, dynamic>{'type': 'integer', 'description': '結束分鐘'},
+            'description': <String, dynamic>{'type': 'string',  'description': '詳細說明'},
+            'location':    <String, dynamic>{'type': 'string',  'description': '地點'},
           },
           'required': ['title', 'start_year', 'start_month', 'start_day',
                        'start_hour', 'start_min', 'end_year', 'end_month',
@@ -259,14 +261,14 @@ class OpenAIService {
     );
 
     final buf = StringBuffer();
-    buf.write('你是 MyRoom 個人助理。以下是使用者的完整資料：\n\n$contextSummary\n\n');
+    buf.write('你是 MyRoom 個人助理。以下是使用者資料摘要（如需完整清單含 id，請使用 list_* 工具）：\n\n$contextSummary\n\n');
     if (selfIntro.isNotEmpty) buf.write('【關於使用者】$selfIntro\n\n');
     if (aiInstructions.isNotEmpty) buf.write('【回覆指示】$aiInstructions\n\n');
     buf.write('請用繁體中文回答，語氣簡潔友善。回答盡量不超過 150 字，除非需要【回覆指示】中要求。');
     if (toolExecutor != null) {
-      buf.write('\n\n你可以使用工具新增或刪除資料。你需要具備敏銳的洞察力，主動辨識出使用者的需求並使用工具，');
+      buf.write('\n\n你可以使用工具新增、刪除或查詢資料。你需要具備敏銳的洞察力，主動辨識出使用者的需求並使用工具，');
       buf.write('不一定需要使用者明確要求。例如，當使用者提出想法，將想法加入靈感；當使用者表示心情低落時，自動新增筆記；');
-      buf.write('當使用者提出行程，依照時間的有無，加入行程或待辦事項。執行工具後，用繁體中文告知使用者結果。');
+      buf.write('當使用者提出行程，依照時間的有無，加入行程或待辦事項。如需查詢完整清單或 id，請使用 list_* 工具。執行工具後，用繁體中文告知使用者結果。');
     }
     final systemMsg = buf.toString();
 

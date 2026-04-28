@@ -138,16 +138,18 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
           final event = CalendarEvent(
             id: 0,
             title: args['title'] as String,
-            startYear:  (args['start_year']  as num?)?.toInt() ?? now.year,
-            startMonth: (args['start_month'] as num?)?.toInt() ?? now.month,
-            startDay:   (args['start_day']   as num).toInt(),
-            startHour:  (args['start_hour']  as num).toInt(),
-            startMin:   (args['start_min']   as num).toInt(),
-            endYear:    (args['end_year']    as num?)?.toInt() ?? now.year,
-            endMonth:   (args['end_month']   as num?)?.toInt() ?? now.month,
-            endDay:     (args['end_day']     as num).toInt(),
-            endHour:    (args['end_hour']    as num).toInt(),
-            endMin:     (args['end_min']     as num).toInt(),
+            startYear:   (args['start_year']  as num?)?.toInt() ?? now.year,
+            startMonth:  (args['start_month'] as num?)?.toInt() ?? now.month,
+            startDay:    (args['start_day']   as num).toInt(),
+            startHour:   (args['start_hour']  as num).toInt(),
+            startMin:    (args['start_min']   as num).toInt(),
+            endYear:     (args['end_year']    as num?)?.toInt() ?? now.year,
+            endMonth:    (args['end_month']   as num?)?.toInt() ?? now.month,
+            endDay:      (args['end_day']     as num).toInt(),
+            endHour:     (args['end_hour']    as num).toInt(),
+            endMin:      (args['end_min']     as num).toInt(),
+            description: (args['description'] as String?),
+            location:    (args['location']    as String?),
             color: AppColors.amber,
           );
           final id = await db.insertEvent(event);
@@ -216,6 +218,49 @@ class _AIChatOverlayState extends State<AIChatOverlay> with TickerProviderStateM
             targetDate:    era != Era.past ? args['date'] as String? : null,
           ));
           return (result: '{"ok":true,"id":$id}', mutated: true);
+        }
+
+        case 'list_todos': {
+          final includeDone = args['include_done'] as bool? ?? false;
+          final todos = await db.getTodosFiltered(includeDone: includeDone);
+          final json = todos.map((t) => {
+            'id': t.id, 'text': t.text, 'cat': t.cat, 'done': t.done,
+          }).toList();
+          return (result: jsonEncode(json), mutated: false);
+        }
+
+        case 'list_events': {
+          final daysAhead = (args['days_ahead'] as num?)?.toInt() ?? 30;
+          final daysBack  = (args['days_back']  as num?)?.toInt() ?? 0;
+          final events = await db.getEventsInWindow(daysBack, daysAhead);
+          final json = events.map((e) => {
+            'id': e.id, 'title': e.title,
+            'date': '${e.startYear}/${e.startMonth}/${e.startDay}',
+            'time': e.allDay
+                ? '全天'
+                : '${e.startHour.toString().padLeft(2, "0")}:${e.startMin.toString().padLeft(2, "0")}',
+            'all_day': e.allDay,
+          }).toList();
+          return (result: jsonEncode(json), mutated: false);
+        }
+
+        case 'list_ideas': {
+          final limit = (args['limit'] as num?)?.toInt() ?? 30;
+          final ideas = await db.getIdeasPaged(limit: limit);
+          final json = ideas.map((i) => {'id': i.id, 'text': i.text}).toList();
+          return (result: jsonEncode(json), mutated: false);
+        }
+
+        case 'list_notes': {
+          final days = (args['days'] as num?)?.toInt() ?? 7;
+          final notes = await db.getRecentNoteItems(days: days);
+          final json = notes.map((n) {
+            final preview = n.content.length > 100
+                ? '${n.content.substring(0, 100)}…'
+                : n.content;
+            return {'id': n.id, 'date': n.dateKey, 'preview': preview};
+          }).toList();
+          return (result: jsonEncode(json), mutated: false);
         }
 
         default:

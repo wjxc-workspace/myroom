@@ -274,6 +274,16 @@ class DatabaseService {
     return rows.map(_rowToTodo).toList();
   }
 
+  Future<List<TodoItem>> getTodosFiltered({bool includeDone = false}) async {
+    final database = await db;
+    final rows = await database.query(
+      'todos',
+      where: includeDone ? null : 'done = 0',
+      orderBy: 'priority ASC, created_at ASC',
+    );
+    return rows.map(_rowToTodo).toList();
+  }
+
   Future<int> insertTodo(TodoItem t) async {
     final database = await db;
     return database.insert('todos', {
@@ -338,6 +348,23 @@ class DatabaseService {
   Future<List<CalendarEvent>> getEvents() async {
     final database = await db;
     final rows = await database.query('events', orderBy: 'start_day ASC, start_hour ASC');
+    return rows.map(_rowToEvent).toList();
+  }
+
+  Future<List<CalendarEvent>> getEventsInWindow(int pastDays, int futureDays) async {
+    final database = await db;
+    final now = DateTime.now();
+    final past   = now.subtract(Duration(days: pastDays));
+    final future = now.add(Duration(days: futureDays));
+    String fmtDate(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}';
+    final rows = await database.rawQuery(
+      "SELECT * FROM events "
+      "WHERE printf('%04d-%02d-%02d', start_year, start_month, start_day) >= ? "
+      "  AND printf('%04d-%02d-%02d', start_year, start_month, start_day) <= ? "
+      "ORDER BY start_year ASC, start_month ASC, start_day ASC, start_hour ASC",
+      [fmtDate(past), fmtDate(future)],
+    );
     return rows.map(_rowToEvent).toList();
   }
 
@@ -443,6 +470,25 @@ class DatabaseService {
   Future<int> deleteIdea(int id) async {
     final database = await db;
     return database.delete('ideas', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Idea>> getIdeasPaged({int limit = 30}) async {
+    final database = await db;
+    final rows = await database.query('ideas', orderBy: 'created_at DESC', limit: limit);
+    return rows.map((r) {
+      final linksJson = r['links'] as String?;
+      final links = linksJson != null
+          ? (jsonDecode(linksJson) as List)
+              .map((l) => IdeaLink(title: l['title'] as String, url: l['url'] as String))
+              .toList()
+          : <IdeaLink>[];
+      return Idea(
+        id: r['id'] as int,
+        text: r['text'] as String,
+        aiSummary: r['ai_summary'] as String?,
+        links: links,
+      );
+    }).toList();
   }
 
   // ─── PINNED RESOURCES ──────────────────────────────────────────────────────
@@ -782,12 +828,20 @@ class DatabaseService {
     return result;
   }
 
+  Future<int> _getDoneCount() async {
+    final database = await db;
+    return Sqflite.firstIntValue(
+      await database.rawQuery('SELECT COUNT(*) FROM todos WHERE done = 1'),
+    ) ?? 0;
+  }
+
   Future<String> buildContextSummary() async {
-    final (todos, events, noteItems, ideas, goals) = await (
-      getTodos(),
-      getEvents(),
+    final (pendingTodos, doneCount, events, noteItems, ideas, goals) = await (
+      getTodosFiltered(),
+      _getDoneCount(),
+      getEventsInWindow(3, 30),
       getRecentNoteItems(),
-      getIdeas(),
+      getIdeasPaged(limit: 20),
       getActiveRecapItems(),
     ).wait;
 
@@ -797,18 +851,19 @@ class DatabaseService {
     buf.writeln();
 
     buf.writeln('【待辦事項】');
-    if (todos.isEmpty) {
-      buf.writeln('（無待辦）');
+    if (pendingTodos.isEmpty) {
+      buf.writeln(doneCount > 0 ? '（所有待辦均已完成，共 $doneCount 項）' : '（無待辦）');
     } else {
-      for (final t in todos) {
-        buf.writeln('- [${t.done ? '✓' : '✗'}][id=${t.id}] ${t.text}（${t.cat}）');
+      for (final t in pendingTodos) {
+        buf.writeln('- [✗][id=${t.id}] ${t.text}（${t.cat}）');
       }
+      if (doneCount > 0) buf.writeln('（已完成：$doneCount 項，未顯示）');
     }
     buf.writeln();
 
-    buf.writeln('【行程】');
+    buf.writeln('【行程（近 3 天至未來 30 天）】');
     if (events.isEmpty) {
-      buf.writeln('（無行程）');
+      buf.writeln('（此時段無行程）');
     } else {
       for (final e in events) {
         if (e.allDay) {
@@ -831,7 +886,7 @@ class DatabaseService {
     }
     buf.writeln();
 
-    buf.writeln('【靈感清單】');
+    buf.writeln('【靈感清單（最新 ${ideas.length} 則）】');
     if (ideas.isEmpty) {
       buf.writeln('（無靈感）');
     } else {
@@ -849,6 +904,115 @@ class DatabaseService {
         final eraLabel = r.era == Era.now ? '現在' : '未來';
         buf.writeln('[$eraLabel] ${r.title} — ${r.displayDate}');
       }
+    }
+
+    return buf.toString();
+  }
+
+  Future<String> buildCompactSummary() async {
+    final database = await db;
+    final now = DateTime.now();
+    final todayStr = todayKey();
+    String fmtDate(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}';
+    final futureBound = fmtDate(now.add(const Duration(days: 30)));
+    final cutoff7d = now.subtract(const Duration(days: 7)).millisecondsSinceEpoch;
+
+    final results = await Future.wait([
+      database.rawQuery('SELECT COUNT(*) FROM todos WHERE done = 0'),           // 0
+      database.rawQuery('SELECT COUNT(*) FROM todos WHERE done = 1'),           // 1
+      database.query('todos', where: 'done = 0',
+          orderBy: 'priority ASC, created_at ASC', limit: 3),                   // 2
+      database.rawQuery(                                                         // 3
+        "SELECT COUNT(*) FROM events "
+        "WHERE printf('%04d-%02d-%02d', start_year, start_month, start_day) >= ?",
+        [todayStr],
+      ),
+      database.rawQuery(                                                         // 4
+        "SELECT * FROM events "
+        "WHERE printf('%04d-%02d-%02d', start_year, start_month, start_day) >= ? "
+        "  AND printf('%04d-%02d-%02d', start_year, start_month, start_day) <= ? "
+        "ORDER BY start_year ASC, start_month ASC, start_day ASC, start_hour ASC "
+        "LIMIT 3",
+        [todayStr, futureBound],
+      ),
+      database.rawQuery('SELECT COUNT(*) FROM ideas'),                          // 5
+      database.query('ideas', orderBy: 'created_at DESC', limit: 3),           // 6
+      database.rawQuery(                                                         // 7
+        'SELECT COUNT(DISTINCT date_key) FROM notes WHERE updated_at >= ?',
+        [cutoff7d],
+      ),
+      database.query('notes',                                                    // 8
+          where: 'updated_at >= ?', whereArgs: [cutoff7d],
+          orderBy: 'updated_at DESC', limit: 1),
+      database.query('recap_items',                                             // 9
+          where: "era IN ('now', 'future')", orderBy: 'created_at ASC'),
+    ]);
+
+    final pendingCount    = Sqflite.firstIntValue(results[0]) ?? 0;
+    final doneCount       = Sqflite.firstIntValue(results[1]) ?? 0;
+    final topTodos        = results[2].map(_rowToTodo).toList();
+    final upcomingCount   = Sqflite.firstIntValue(results[3]) ?? 0;
+    final nextEvents      = results[4].map(_rowToEvent).toList();
+    final ideaCount       = Sqflite.firstIntValue(results[5]) ?? 0;
+    final latestIdeas     = results[6].map((r) => r['text'] as String).toList();
+    final recentNoteCount = Sqflite.firstIntValue(results[7]) ?? 0;
+    final latestNote      = results[8].isNotEmpty ? results[8].first : null;
+    final goals           = results[9].map(_rowToRecap).toList();
+
+    final buf = StringBuffer();
+    buf.writeln('現在日期：$todayStr');
+    buf.writeln('（如需完整清單含 id，請使用 list_todos / list_events / list_ideas / list_notes 工具）');
+    buf.writeln();
+
+    if (pendingCount == 0 && doneCount == 0) {
+      buf.writeln('【待辦】無待辦事項');
+    } else if (pendingCount == 0) {
+      buf.writeln('【待辦】所有 $doneCount 項已完成');
+    } else {
+      final topList = topTodos.map((t) => '${t.text}（${t.cat}）').join('、');
+      buf.writeln('【待辦】待處理 $pendingCount 項（已完成 $doneCount 項）。'
+          '最緊急：$topList${pendingCount > 3 ? "…" : ""}');
+    }
+
+    if (upcomingCount == 0) {
+      buf.writeln('【行程】未來 30 天無行程');
+    } else {
+      final evtList = nextEvents.map((e) {
+        if (e.allDay) return '${e.startMonth}/${e.startDay} 全天 ${e.title}';
+        return '${e.startMonth}/${e.startDay} ${fmtHm(e.startHour, e.startMin)} ${e.title}';
+      }).join('、');
+      buf.writeln('【行程】未來 30 天 $upcomingCount 個。最近：$evtList${upcomingCount > 3 ? "…" : ""}');
+    }
+
+    if (ideaCount == 0) {
+      buf.writeln('【靈感】無靈感記錄');
+    } else {
+      final ideaList = latestIdeas.join('、');
+      buf.writeln('【靈感】共 $ideaCount 則。最新：$ideaList${ideaCount > 3 ? "…" : ""}');
+    }
+
+    if (recentNoteCount == 0) {
+      buf.writeln('【筆記】近 7 天無筆記');
+    } else {
+      var preview = '';
+      if (latestNote != null) {
+        final content = latestNote['content'] as String;
+        final dateKey = latestNote['date_key'] as String;
+        final p = content.length > 20 ? '${content.substring(0, 20)}…' : content;
+        preview = '（$dateKey）「$p」';
+      }
+      buf.writeln('【筆記】近 7 天 $recentNoteCount 則。最新 $preview');
+    }
+
+    if (goals.isEmpty) {
+      buf.writeln('【目標】無進行中目標');
+    } else {
+      final goalList = goals.map((r) {
+        final label = r.era == Era.now ? '現在' : '未來';
+        return '$label：${r.title}';
+      }).join('；');
+      buf.writeln('【目標】$goalList');
     }
 
     return buf.toString();
