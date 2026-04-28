@@ -95,6 +95,17 @@ class _NotePageState extends State<NotePage> {
   }
 
   @override
+  void didUpdateWidget(NotePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.notes != widget.notes) {
+      // Reload day notes when parent signals an external note mutation.
+      if (_selectedDay != null) _loadDayNotes(_noteKey);
+      // Reload categories + their notes (handles count update in category view).
+      _loadCategories();
+    }
+  }
+
+  @override
   void dispose() {
     _noteCtrl?.dispose();
     super.dispose();

@@ -179,13 +179,20 @@ class _MyRoomShellState extends State<MyRoomShell> {
   }
 
   // Fire-and-forget: classify a newly inserted note into a user category.
-  Future<void> _classifyInsertedNote(int noteId, String content) async {
+  // If preCatId is provided the AI step is skipped entirely.
+  Future<void> _classifyInsertedNote(int noteId, String content, {String? preCatId}) async {
     final db = DatabaseService.instance;
-    final categories = await db.getNoteCategories();
-    if (categories.isEmpty) return;
-    final catId = await OpenAIService.instance.classifyNoteToCategory(content, categories);
+    final String? catId;
+    if (preCatId != null) {
+      catId = preCatId;
+    } else {
+      final categories = await db.getNoteCategories();
+      if (categories.isEmpty) return;
+      catId = await OpenAIService.instance.classifyNoteToCategory(content, categories);
+    }
     if (catId == null) return;
     await db.updateNoteCat(noteId, catId);
+    await _onNotesMutated();
   }
 
   void _onItemClassified(ClassificationResult r) async {
@@ -225,7 +232,7 @@ class _MyRoomShellState extends State<MyRoomShell> {
         final id = await db.upsertNote(r.dateKey, r.content);
         final notes = await db.getNotes();
         if (mounted) setState(() => _notes = notes);
-        if (id > 0) _classifyInsertedNote(id, r.content);
+        if (id > 0) _classifyInsertedNote(id, r.content, preCatId: r.preCatId);
 
       case ClassifiedRecap():
         await db.insertRecapItem(RecapItem(

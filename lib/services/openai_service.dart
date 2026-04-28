@@ -53,7 +53,8 @@ class ClassifiedIdea extends ClassificationResult {
 class ClassifiedNote extends ClassificationResult {
   final String dateKey; // YYYY-MM-DD
   final String content;
-  ClassifiedNote({required this.dateKey, required this.content});
+  final String? preCatId; // user pre-selected NoteCategory id; null = let AI decide
+  ClassifiedNote({required this.dateKey, required this.content, this.preCatId});
 }
 
 class ClassifiedRecap extends ClassificationResult {
