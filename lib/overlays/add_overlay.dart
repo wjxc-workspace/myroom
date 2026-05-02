@@ -105,7 +105,7 @@ class _AddOverlayState extends State<AddOverlay>
   // ── File picker ──────────────────────────────────────────────────────────────
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       allowMultiple: true,
       withData: true,
       type: FileType.custom,

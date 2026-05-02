@@ -134,6 +134,18 @@ class _MyRoomShellState extends State<MyRoomShell> {
     if (mounted) setState(() => _todos = updated);
   }
 
+  void _onTodoEdited(TodoItem t) async {
+    await DatabaseService.instance.updateTodo(t);
+    final updated = await DatabaseService.instance.getTodos();
+    if (mounted) setState(() => _todos = updated);
+  }
+
+  void _onTodosReordered(List<int> orderedIds) async {
+    await DatabaseService.instance.reorderTodos(orderedIds);
+    final updated = await DatabaseService.instance.getTodos();
+    if (mounted) setState(() => _todos = updated);
+  }
+
   void _onCategoryAdded(String name, Color color) async {
     await DatabaseService.instance.insertCategory(name, color);
     final updated = await DatabaseService.instance.getCategories();
@@ -154,6 +166,12 @@ class _MyRoomShellState extends State<MyRoomShell> {
 
   void _onEventDeleted(int id) async {
     await DatabaseService.instance.deleteEvent(id);
+    final updated = await DatabaseService.instance.getEvents();
+    if (mounted) setState(() => _events = updated);
+  }
+
+  void _onEventEdited(CalendarEvent e) async {
+    await DatabaseService.instance.updateEvent(e);
     final updated = await DatabaseService.instance.getEvents();
     if (mounted) setState(() => _events = updated);
   }
@@ -355,13 +373,16 @@ class _MyRoomShellState extends State<MyRoomShell> {
                         if (_activeTab != i) setState(() => _activeTab = i);
                       },
                       children: [
-                        _KeepAlive(child: CalendarPage(events: _events, onEventAdded: _onEventAdded, onEventDeleted: _onEventDeleted)),
+                        _KeepAlive(child: CalendarPage(events: _events, onEventAdded: _onEventAdded, onEventDeleted: _onEventDeleted, onEventEdited: _onEventEdited)),
                         _KeepAlive(child: TodoPage(
                           todos: _todos,
                           categories: _categories,
+                          isActive: _activeTab == 1,
                           onTodoAdded: _onTodoAdded,
                           onTodoToggled: _onTodoToggled,
                           onTodoDeleted: _onTodoDeleted,
+                          onTodoEdited: _onTodoEdited,
+                          onTodosReordered: _onTodosReordered,
                           onCategoryAdded: _onCategoryAdded,
                           onCategoryDeleted: _onCategoryDeleted,
                         )),

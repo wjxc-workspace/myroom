@@ -276,7 +276,7 @@ class DatabaseService {
 
   Future<List<TodoItem>> getTodos() async {
     final database = await db;
-    final rows = await database.query('todos', orderBy: 'created_at ASC');
+    final rows = await database.query('todos', orderBy: 'priority ASC, created_at ASC');
     return rows.map(_rowToTodo).toList();
   }
 
@@ -315,6 +315,16 @@ class DatabaseService {
   Future<int> deleteTodo(int id) async {
     final database = await db;
     return database.delete('todos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> reorderTodos(List<int> orderedIds) async {
+    final database = await db;
+    final batch = database.batch();
+    for (int i = 0; i < orderedIds.length; i++) {
+      batch.update('todos', {'priority': i},
+          where: 'id = ?', whereArgs: [orderedIds[i]]);
+    }
+    await batch.commit(noResult: true);
   }
 
   TodoItem _rowToTodo(Map<String, dynamic> r) => TodoItem(
