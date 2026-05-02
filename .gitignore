@@ -34,6 +34,7 @@ ios/Flutter/flutter_export_environment.sh
 ios/Flutter/ephemeral/
 ios/Runner.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
 .vscode/settings.json
+.vscode/c_cpp_properties.json
 
 # Flutter/Dart/Pub related
 **/doc/api/
