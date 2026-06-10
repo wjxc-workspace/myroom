@@ -1,5 +1,7 @@
 node_modules/
-lib/
+# Compiled TS output only (anchored to the functions root) — NOT src/lib, which
+# is the shared library source and MUST be committed.
+/lib/
 *.local
 .env
 firebase-debug.log

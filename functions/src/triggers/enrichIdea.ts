@@ -10,7 +10,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions/v2";
 
 import { REGION } from "../lib/admin";
-import { MODELS, REQ_TIMEOUT, USER_LOCATION } from "../lib/config";
+import { MODELS, REQ_TIMEOUT, WEB_SEARCH_TOOL } from "../lib/config";
 import { createResponse, extractJson } from "../lib/openai";
 import { ENRICH_IDEA_SYSTEM } from "../lib/prompts";
 import { loadSettings } from "../middleware/auth";
@@ -56,7 +56,7 @@ export const enrichIdea = onDocumentWritten(
           instructions: ENRICH_IDEA_SYSTEM,
           input: text,
           max_output_tokens: 300,
-          tools: [{ type: "web_search", user_location: USER_LOCATION }],
+          tools: [WEB_SEARCH_TOOL],
         },
         REQ_TIMEOUT.enrich
       );

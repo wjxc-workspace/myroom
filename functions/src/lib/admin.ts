@@ -1,0 +1,14 @@
+import { initializeApp, getApps } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+
+// Initialize the Admin SDK exactly once for the whole functions runtime.
+if (getApps().length === 0) {
+  initializeApp();
+}
+
+export const db = getFirestore();
+export const storage = getStorage();
+
+/** Firestore + Functions region (Taiwan; colocated). */
+export const REGION = "asia-east1";

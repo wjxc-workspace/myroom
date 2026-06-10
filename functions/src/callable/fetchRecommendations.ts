@@ -3,7 +3,7 @@
 import { onCall } from "firebase-functions/v2/https";
 
 import { REGION } from "../lib/admin";
-import { MODELS, REQ_TIMEOUT, USER_LOCATION } from "../lib/config";
+import { MODELS, REQ_TIMEOUT, WEB_SEARCH_TOOL } from "../lib/config";
 import { createResponse, extractJson } from "../lib/openai";
 import { RECOMMEND_SYSTEM } from "../lib/prompts";
 import { enforceRateLimit } from "../lib/rateLimit";
@@ -44,7 +44,7 @@ export const fetchRecommendations = onCall(
         instructions: RECOMMEND_SYSTEM,
         input: userContent,
         max_output_tokens: 600,
-        tools: [{ type: "web_search", user_location: USER_LOCATION }],
+        tools: [WEB_SEARCH_TOOL],
       },
       REQ_TIMEOUT.recommend
     );
