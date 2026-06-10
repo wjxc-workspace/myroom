@@ -29,7 +29,13 @@ const kNoteIconMap = {
 };
 
 const kNoteIconKeys = [
-  'tag', 'star', 'pencil', 'fileText', 'bookOpen', 'music', 'heart',
+  'tag',
+  'star',
+  'pencil',
+  'fileText',
+  'bookOpen',
+  'music',
+  'heart',
 ];
 
 const kNoteCatPalette = [
@@ -159,8 +165,7 @@ class _NotesViewState extends State<_NotesView> {
                           labels[m.index],
                           style: AppText.body(
                             size: 13,
-                            weight:
-                                active ? FontWeight.w600 : FontWeight.w400,
+                            weight: active ? FontWeight.w600 : FontWeight.w400,
                             color: active ? Colors.white : AppColors.muted,
                           ),
                         ),
@@ -255,13 +260,16 @@ class _NotesViewState extends State<_NotesView> {
         // Day-of-week header
         Row(
           children: kDow
-              .map((d) => Expanded(
-                    child: Center(
-                      child: Text(d,
-                          style: AppText.caption(
-                              size: 10, weight: FontWeight.w600)),
+              .map(
+                (d) => Expanded(
+                  child: Center(
+                    child: Text(
+                      d,
+                      style: AppText.caption(size: 10, weight: FontWeight.w600),
                     ),
-                  ))
+                  ),
+                ),
+              )
               .toList(),
         ),
         const SizedBox(height: 4),
@@ -301,8 +309,8 @@ class _NotesViewState extends State<_NotesView> {
                   color: isSelected
                       ? AppColors.dark
                       : isToday
-                          ? AppColors.dark.withOpacity(0.08)
-                          : Colors.transparent,
+                      ? AppColors.dark.withOpacity(0.08)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
@@ -316,8 +324,8 @@ class _NotesViewState extends State<_NotesView> {
                         color: isSelected
                             ? Colors.white
                             : isPast
-                                ? AppColors.muted
-                                : AppColors.dark,
+                            ? AppColors.muted
+                            : AppColors.dark,
                       ),
                     ),
                     if (hasNote)
@@ -353,7 +361,9 @@ class _NotesViewState extends State<_NotesView> {
   // ── Category mode ────────────────────────────────────────────────────────
 
   Widget _buildCategoryMode(
-      BuildContext context, List<NoteCategory> categories) {
+    BuildContext context,
+    List<NoteCategory> categories,
+  ) {
     return GridView.count(
       crossAxisCount: 2,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
@@ -387,9 +397,10 @@ class _NotesViewState extends State<_NotesView> {
                         child: Icon(icon, size: 18, color: c.color),
                       ),
                       const Spacer(),
-                      Text(c.label,
-                          style: AppText.body(
-                              size: 14, weight: FontWeight.w600)),
+                      Text(
+                        c.label,
+                        style: AppText.body(size: 14, weight: FontWeight.w600),
+                      ),
                       _CatCount(catId: c.id),
                     ],
                   ),
@@ -428,13 +439,18 @@ class _NotesViewState extends State<_NotesView> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(LucideIcons.plus,
-                    size: 20, color: AppColors.muted.withOpacity(0.6)),
+                Icon(
+                  LucideIcons.plus,
+                  size: 20,
+                  color: AppColors.muted.withOpacity(0.6),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '新增分類',
                   style: AppText.label(
-                      size: 12, color: AppColors.muted.withOpacity(0.6)),
+                    size: 12,
+                    color: AppColors.muted.withOpacity(0.6),
+                  ),
                 ),
               ],
             ),
@@ -456,9 +472,13 @@ class _NotesViewState extends State<_NotesView> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
           backgroundColor: AppColors.bg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('新增分類',
-              style: AppText.body(size: 16, weight: FontWeight.w600)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            '新增分類',
+            style: AppText.body(size: 16, weight: FontWeight.w600),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,8 +490,10 @@ class _NotesViewState extends State<_NotesView> {
                 style: AppText.body(size: 14),
               ),
               const SizedBox(height: 14),
-              Text('選擇圖示',
-                  style: AppText.caption(size: 11, weight: FontWeight.w600)),
+              Text(
+                '選擇圖示',
+                style: AppText.caption(size: 11, weight: FontWeight.w600),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -485,8 +507,7 @@ class _NotesViewState extends State<_NotesView> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color:
-                            isSelected ? AppColors.dark : AppColors.border,
+                        color: isSelected ? AppColors.dark : AppColors.border,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -503,8 +524,10 @@ class _NotesViewState extends State<_NotesView> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('取消',
-                  style: AppText.body(size: 14, color: AppColors.muted)),
+              child: Text(
+                '取消',
+                style: AppText.body(size: 14, color: AppColors.muted),
+              ),
             ),
             TextButton(
               onPressed: () async {
@@ -513,18 +536,23 @@ class _NotesViewState extends State<_NotesView> {
                 Navigator.pop(ctx);
                 final idx = categories.length;
                 final color = kNoteCatPalette[idx % kNoteCatPalette.length];
-                await context.read<NoteRepo>().addNoteCategory(NoteCategory(
-                      id: '',
-                      label: label,
-                      iconName: selectedIcon,
-                      color: color,
-                      sortOrder: idx,
-                    ));
+                await context.read<NoteRepo>().addNoteCategory(
+                  NoteCategory(
+                    id: '',
+                    label: label,
+                    iconName: selectedIcon,
+                    color: color,
+                    sortOrder: idx,
+                  ),
+                );
               },
               child: Text(
                 '新增',
                 style: AppText.body(
-                    size: 14, weight: FontWeight.w600, color: AppColors.dark),
+                  size: 14,
+                  weight: FontWeight.w600,
+                  color: AppColors.dark,
+                ),
               ),
             ),
           ],
@@ -539,24 +567,31 @@ class _NotesViewState extends State<_NotesView> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('刪除分類',
-            style: AppText.body(size: 16, weight: FontWeight.w600)),
+        title: Text(
+          '刪除分類',
+          style: AppText.body(size: 16, weight: FontWeight.w600),
+        ),
         content: Text(
-          '確定刪除「${cat.label}」？\n\n此分類下的筆記會移回「未分類」。',
+          '確定刪除「${cat.label}」？\n\n此分類下的筆記會移回「無分類」。',
           style: AppText.body(size: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('取消',
-                style: AppText.body(size: 14, color: AppColors.muted)),
+            child: Text(
+              '取消',
+              style: AppText.body(size: 14, color: AppColors.muted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               '刪除',
               style: AppText.body(
-                  size: 14, weight: FontWeight.w600, color: AppColors.rose),
+                size: 14,
+                weight: FontWeight.w600,
+                color: AppColors.rose,
+              ),
             ),
           ),
         ],
@@ -570,23 +605,22 @@ class _NotesViewState extends State<_NotesView> {
   // ── Shared helpers ────────────────────────────────────────────────────────
 
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: AppText.body(color: AppColors.muted),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.dark),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      );
+    hintText: hint,
+    hintStyle: AppText.body(color: AppColors.muted),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.border),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.border),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.dark),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+  );
 }
 
 // ─── Day panel (date mode) ──────────────────────────────────────────────────
@@ -657,7 +691,10 @@ class _DayPanel extends StatelessWidget {
                 Text(
                   '新增 $month月$day日 的筆記',
                   style: AppText.body(
-                      size: 14, weight: FontWeight.w600, color: Colors.white),
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
               ],
             ),
@@ -688,10 +725,12 @@ class _DayNotesList extends StatelessWidget {
     if (notes.isEmpty) return const SizedBox.shrink();
     return Column(
       children: notes
-          .map((n) => Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: _NoteCard(note: n, showDate: false),
-              ))
+          .map(
+            (n) => Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _NoteCard(note: n, showDate: false),
+            ),
+          )
           .toList(),
     );
   }
@@ -773,24 +812,30 @@ class _CatDetail extends StatelessWidget {
                         color: AppColors.tint(category.color, 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(LucideIcons.chevronLeft,
-                          size: 18, color: category.color),
+                      child: Icon(
+                        LucideIcons.chevronLeft,
+                        size: 18,
+                        color: category.color,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Icon(icon, size: 20, color: category.color),
                   const SizedBox(width: 8),
-                  Text(category.label,
-                      style:
-                          AppText.display(size: 24, weight: FontWeight.w500)),
+                  Text(
+                    category.label,
+                    style: AppText.display(size: 24, weight: FontWeight.w500),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
 
-              ...notes.map((note) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _NoteCard(note: note, showDate: true),
-                  )),
+              ...notes.map(
+                (note) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _NoteCard(note: note, showDate: true),
+                ),
+              ),
 
               const SizedBox(height: 4),
               GestureDetector(
@@ -805,14 +850,20 @@ class _CatDetail extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(LucideIcons.plus,
-                          size: 15, color: Colors.white),
+                      const Icon(
+                        LucideIcons.plus,
+                        size: 15,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 6),
-                      Text('新增筆記',
-                          style: AppText.body(
-                              size: 14,
-                              weight: FontWeight.w600,
-                              color: Colors.white)),
+                      Text(
+                        '新增筆記',
+                        style: AppText.body(
+                          size: 14,
+                          weight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -869,21 +920,28 @@ class _NoteCardState extends State<_NoteCard> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('刪除筆記',
-            style: AppText.body(size: 16, weight: FontWeight.w600)),
+        title: Text(
+          '刪除筆記',
+          style: AppText.body(size: 16, weight: FontWeight.w600),
+        ),
         content: Text('確定刪除這份筆記？', style: AppText.body(size: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('取消',
-                style: AppText.body(size: 14, color: AppColors.muted)),
+            child: Text(
+              '取消',
+              style: AppText.body(size: 14, color: AppColors.muted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               '刪除',
               style: AppText.body(
-                  size: 14, weight: FontWeight.w600, color: AppColors.rose),
+                size: 14,
+                weight: FontWeight.w600,
+                color: AppColors.rose,
+              ),
             ),
           ),
         ],
@@ -908,14 +966,18 @@ class _NoteCardState extends State<_NoteCard> {
             children: [
               if (widget.showDate)
                 Expanded(
-                  child: Text(_formatDate(note.dateKey),
-                      style: AppText.body(size: 14, weight: FontWeight.w600)),
+                  child: Text(
+                    _formatDate(note.dateKey),
+                    style: AppText.body(size: 14, weight: FontWeight.w600),
+                  ),
                 )
               else
                 // Category chip
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: cat.color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -927,20 +989,20 @@ class _NoteCardState extends State<_NoteCard> {
                 ),
               if (!widget.showDate) const Spacer(),
               _IconAction(
-                icon:
-                    _expanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                icon: _expanded
+                    ? LucideIcons.chevronUp
+                    : LucideIcons.chevronDown,
                 onTap: () => setState(() => _expanded = !_expanded),
               ),
-              _IconAction(
-                icon: LucideIcons.trash2,
-                onTap: _confirmDelete,
-              ),
+              _IconAction(icon: LucideIcons.trash2, onTap: _confirmDelete),
             ],
           ),
           if (note.title.isNotEmpty && note.title != '無標題') ...[
             const SizedBox(height: 6),
-            Text(note.title,
-                style: AppText.body(size: 14, weight: FontWeight.w600)),
+            Text(
+              note.title,
+              style: AppText.body(size: 14, weight: FontWeight.w600),
+            ),
           ],
           const SizedBox(height: 6),
           GestureDetector(
@@ -949,8 +1011,9 @@ class _NoteCardState extends State<_NoteCard> {
             child: Text(
               note.content,
               maxLines: _expanded ? null : 2,
-              overflow:
-                  _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              overflow: _expanded
+                  ? TextOverflow.visible
+                  : TextOverflow.ellipsis,
               style: AppText.label(size: 13, color: AppColors.muted),
             ),
           ),
@@ -1001,7 +1064,9 @@ class _AttachmentRow extends StatelessWidget {
             return _AttachInfoChip(icon: LucideIcons.music, label: a.filename);
           default:
             return _AttachInfoChip(
-                icon: LucideIcons.fileText, label: a.filename);
+              icon: LucideIcons.fileText,
+              label: a.filename,
+            );
         }
       }).toList(),
     );
@@ -1028,8 +1093,9 @@ class _ImageThumbState extends State<_ImageThumb> {
 
   Future<void> _resolve() async {
     try {
-      final url =
-          await context.read<StorageRepo>().downloadUrl(widget.att.storagePath);
+      final url = await context.read<StorageRepo>().downloadUrl(
+        widget.att.storagePath,
+      );
       if (mounted) setState(() => _url = url);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
@@ -1059,7 +1125,11 @@ class _ImageThumbState extends State<_ImageThumb> {
         width: 56,
         height: 56,
         color: AppColors.border,
-        child: const Icon(LucideIcons.imageOff, size: 18, color: AppColors.muted),
+        child: const Icon(
+          LucideIcons.imageOff,
+          size: 18,
+          color: AppColors.muted,
+        ),
       );
     } else if (_url == null) {
       content = Container(
@@ -1082,8 +1152,11 @@ class _ImageThumbState extends State<_ImageThumb> {
             width: 56,
             height: 56,
             color: AppColors.border,
-            child: const Icon(LucideIcons.imageOff,
-                size: 18, color: AppColors.muted),
+            child: const Icon(
+              LucideIcons.imageOff,
+              size: 18,
+              color: AppColors.muted,
+            ),
           ),
         ),
       );

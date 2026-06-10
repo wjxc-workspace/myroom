@@ -22,10 +22,12 @@ class NoteCategoryRef {
   });
 
   /// The `無分類` sentinel reference used as the default for new notes.
+  /// Matches the server-provisioned sentinel (label `無分類`, neutral grey) so a
+  /// note written via the fallback path carries the canonical snapshot.
   static const NoteCategoryRef undefined = NoteCategoryRef(
     id: kUndefinedCategoryId,
-    label: '未分類',
-    color: Color(0xFFBFA97A),
+    label: '無分類',
+    color: Color(0xFF9A8A7E),
     iconName: 'tag',
   );
 
@@ -33,18 +35,18 @@ class NoteCategoryRef {
     if (m == null) return undefined;
     return NoteCategoryRef(
       id: (m['id'] as String?) ?? kUndefinedCategoryId,
-      label: (m['label'] as String?) ?? '未分類',
-      color: Color((m['colorVal'] as int?) ?? 0xFFBFA97A),
+      label: (m['label'] as String?) ?? '無分類',
+      color: Color((m['colorVal'] as int?) ?? 0xFF9A8A7E),
       iconName: (m['iconName'] as String?) ?? '',
     );
   }
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'label': label,
-        'colorVal': color.toARGB32(),
-        'iconName': iconName,
-      };
+    'id': id,
+    'label': label,
+    'colorVal': color.toARGB32(),
+    'iconName': iconName,
+  };
 }
 
 /// One attachment entry stored inside `notes/{id}.attachments[]`.
@@ -64,18 +66,18 @@ class NoteAttachment {
   });
 
   factory NoteAttachment.fromMap(Map<String, dynamic> m) => NoteAttachment(
-        type: (m['type'] as String?) ?? 'file',
-        filename: (m['filename'] as String?) ?? '',
-        storagePath: (m['storagePath'] as String?) ?? '',
-        attId: (m['attId'] as String?) ?? '',
-      );
+    type: (m['type'] as String?) ?? 'file',
+    filename: (m['filename'] as String?) ?? '',
+    storagePath: (m['storagePath'] as String?) ?? '',
+    attId: (m['attId'] as String?) ?? '',
+  );
 
   Map<String, dynamic> toMap() => {
-        'type': type,
-        'filename': filename,
-        'storagePath': storagePath,
-        'attId': attId,
-      };
+    'type': type,
+    'filename': filename,
+    'storagePath': storagePath,
+    'attId': attId,
+  };
 }
 
 /// A freshly picked / recorded attachment, built by the page from picked files
@@ -139,12 +141,12 @@ class Note {
 
   /// Client-writable data fields only. The repo injects createdAt/updatedAt.
   Map<String, dynamic> toJson() => {
-        'dateKey': dateKey,
-        'title': title,
-        'content': content,
-        'category': category.toMap(),
-        'attachments': attachments.map((a) => a.toMap()).toList(),
-      };
+    'dateKey': dateKey,
+    'title': title,
+    'content': content,
+    'category': category.toMap(),
+    'attachments': attachments.map((a) => a.toMap()).toList(),
+  };
 
   Note copyWith({
     String? id,
@@ -155,15 +157,14 @@ class Note {
     List<NoteAttachment>? attachments,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) =>
-      Note(
-        id: id ?? this.id,
-        dateKey: dateKey ?? this.dateKey,
-        title: title ?? this.title,
-        content: content ?? this.content,
-        category: category ?? this.category,
-        attachments: attachments ?? this.attachments,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => Note(
+    id: id ?? this.id,
+    dateKey: dateKey ?? this.dateKey,
+    title: title ?? this.title,
+    content: content ?? this.content,
+    category: category ?? this.category,
+    attachments: attachments ?? this.attachments,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }

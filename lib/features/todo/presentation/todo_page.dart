@@ -121,19 +121,25 @@ class _TodoViewState extends State<_TodoView> {
       catRef = picked == null
           ? TodoCategoryRef.undefined
           : TodoCategoryRef(
-              id: picked.id, label: picked.label, color: picked.color);
+              id: picked.id,
+              label: picked.label,
+              color: picked.color,
+            );
     }
 
-    final maxOrder =
-        todos.isEmpty ? -1 : todos.map((t) => t.sortOrder).reduce(max);
+    final maxOrder = todos.isEmpty
+        ? -1
+        : todos.map((t) => t.sortOrder).reduce(max);
 
-    context.read<TodoRepo>().add(Todo(
-          id: '',
-          title: text,
-          isCompleted: false,
-          sortOrder: maxOrder + 1,
-          category: catRef,
-        ));
+    context.read<TodoRepo>().add(
+      Todo(
+        id: '',
+        title: text,
+        isCompleted: false,
+        sortOrder: maxOrder + 1,
+        category: catRef,
+      ),
+    );
 
     _newTextCtrl.clear();
     setState(() {
@@ -142,12 +148,30 @@ class _TodoViewState extends State<_TodoView> {
     });
   }
 
-  void _onReorder(List<Todo> visible, int oldIndex, int newIndex) {
+  void _onReorder(
+    List<Todo> all,
+    List<Todo> visible,
+    int oldIndex,
+    int newIndex,
+  ) {
     if (newIndex > oldIndex) newIndex -= 1;
     final reordered = List<Todo>.from(visible);
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, moved);
-    final orderedIds = reordered.map((t) => t.id).toList();
+
+    // Splice the reordered visible items back into the full ordered list so
+    // reorder() always writes a dense 0..N-1 sortOrder across EVERY todo, not
+    // just the filtered subset (Repositories.md §5). Reordering only the visible
+    // ids would collide their sortOrder with the hidden todos and scramble the
+    // global "全部" order. Hidden todos keep their slots; the visible slots take
+    // the new order.
+    final full = _ordered(all);
+    final visibleIds = visible.map((t) => t.id).toSet();
+    var v = 0;
+    final orderedIds = [
+      for (final t in full)
+        visibleIds.contains(t.id) ? reordered[v++].id : t.id,
+    ];
     context.read<TodoRepo>().reorder(orderedIds);
   }
 
@@ -177,14 +201,16 @@ class _TodoViewState extends State<_TodoView> {
       builder: (sheetCtx) => _AddCategorySheet(
         existingCategories: cats,
         onAdd: (name, color) {
-          repo.addTodoCategory(TodoCategory(
-            id: '',
-            label: name,
-            color: color,
-            sortOrder: cats.isEmpty
-                ? 0
-                : cats.map((c) => c.sortOrder).reduce(max) + 1,
-          ));
+          repo.addTodoCategory(
+            TodoCategory(
+              id: '',
+              label: name,
+              color: color,
+              sortOrder: cats.isEmpty
+                  ? 0
+                  : cats.map((c) => c.sortOrder).reduce(max) + 1,
+            ),
+          );
           Navigator.pop(sheetCtx);
         },
         onDelete: (id) => repo.deleteTodoCategory(id),
@@ -218,9 +244,10 @@ class _TodoViewState extends State<_TodoView> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('今日完成度',
-                        style:
-                            AppText.body(size: 13, weight: FontWeight.w500)),
+                    Text(
+                      '今日完成度',
+                      style: AppText.body(size: 13, weight: FontWeight.w500),
+                    ),
                     const SizedBox(height: 3),
                     Text('$done / $total 項任務', style: AppText.caption()),
                   ],
@@ -237,7 +264,9 @@ class _TodoViewState extends State<_TodoView> {
                 onTap: () => setState(() => _showDone = !_showDone),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 7),
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
                   decoration: BoxDecoration(
                     color: _showDone ? AppColors.dark : AppColors.card,
                     borderRadius: BorderRadius.circular(20),
@@ -280,14 +309,19 @@ class _TodoViewState extends State<_TodoView> {
                   child: Container(
                     margin: const EdgeInsets.only(right: 7),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 7),
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.card,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AppColors.border),
                     ),
-                    child: const Icon(LucideIcons.plus,
-                        size: 14, color: AppColors.muted),
+                    child: const Icon(
+                      LucideIcons.plus,
+                      size: 14,
+                      color: AppColors.muted,
+                    ),
                   ),
                 ),
               ],
@@ -316,12 +350,12 @@ class _TodoViewState extends State<_TodoView> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(LucideIcons.plus,
-                        size: 14, color: Colors.white),
+                    const Icon(LucideIcons.plus, size: 14, color: Colors.white),
                     const SizedBox(width: 6),
-                    Text('新增待辦',
-                        style:
-                            AppText.label(size: 13, color: Colors.white)),
+                    Text(
+                      '新增待辦',
+                      style: AppText.label(size: 13, color: Colors.white),
+                    ),
                   ],
                 ),
               ),
@@ -335,7 +369,7 @@ class _TodoViewState extends State<_TodoView> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
-            onReorder: (o, n) => _onReorder(items, o, n),
+            onReorder: (o, n) => _onReorder(todos, items, o, n),
             itemCount: items.length,
             itemBuilder: (context, i) {
               final t = items[i];
@@ -392,8 +426,7 @@ class _TodoViewState extends State<_TodoView> {
             onSubmitted: (_) => _addTodo(todos, cats),
           ),
           const SizedBox(height: 10),
-          Text('類別',
-              style: AppText.caption(size: 11, weight: FontWeight.w600)),
+          Text('類別', style: AppText.caption(size: 11, weight: FontWeight.w600)),
           const SizedBox(height: 6),
           Wrap(
             spacing: 7,
@@ -407,12 +440,14 @@ class _TodoViewState extends State<_TodoView> {
                     _newCatId == null || _newCatId == kUndefinedCategoryId,
                 onTap: () => setState(() => _newCatId = null),
               ),
-              ...cats.map((c) => _CatChip(
-                    label: c.label,
-                    color: c.color,
-                    selected: _newCatId == c.id,
-                    onTap: () => setState(() => _newCatId = c.id),
-                  )),
+              ...cats.map(
+                (c) => _CatChip(
+                  label: c.label,
+                  color: c.color,
+                  selected: _newCatId == c.id,
+                  onTap: () => setState(() => _newCatId = c.id),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -428,11 +463,14 @@ class _TodoViewState extends State<_TodoView> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
-                      child: Text('新增',
-                          style: AppText.body(
-                              size: 13,
-                              weight: FontWeight.w600,
-                              color: Colors.white)),
+                      child: Text(
+                        '新增',
+                        style: AppText.body(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -451,8 +489,11 @@ class _TodoViewState extends State<_TodoView> {
                     border: Border.all(color: AppColors.border),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(LucideIcons.x,
-                      size: 16, color: AppColors.muted),
+                  child: const Icon(
+                    LucideIcons.x,
+                    size: 16,
+                    color: AppColors.muted,
+                  ),
                 ),
               ),
             ],
@@ -463,7 +504,11 @@ class _TodoViewState extends State<_TodoView> {
   }
 
   Widget _buildTodoItem(
-      Todo t, int index, bool isDone, List<TodoCategory> cats) {
+    Todo t,
+    int index,
+    bool isDone,
+    List<TodoCategory> cats,
+  ) {
     final color = t.category.color;
     return Dismissible(
       key: ValueKey(t.id),
@@ -475,12 +520,12 @@ class _TodoViewState extends State<_TodoView> {
           content: Text('確定要刪除「${t.title}」嗎？'),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child:
-                  const Text('刪除', style: TextStyle(color: Colors.red)),
+              child: const Text('刪除', style: TextStyle(color: Colors.red)),
             ),
           ],
         ),
@@ -494,8 +539,7 @@ class _TodoViewState extends State<_TodoView> {
           color: AppColors.rose,
           borderRadius: BorderRadius.circular(18),
         ),
-        child:
-            const Icon(LucideIcons.trash2, color: Colors.white, size: 20),
+        child: const Icon(LucideIcons.trash2, color: Colors.white, size: 20),
       ),
       child: Padding(
         padding: const EdgeInsets.only(bottom: 9),
@@ -514,7 +558,9 @@ class _TodoViewState extends State<_TodoView> {
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 14),
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     width: 23,
@@ -522,12 +568,16 @@ class _TodoViewState extends State<_TodoView> {
                     decoration: BoxDecoration(
                       color: isDone ? color : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
-                      border:
-                          isDone ? null : Border.all(color: color, width: 2),
+                      border: isDone
+                          ? null
+                          : Border.all(color: color, width: 2),
                     ),
                     child: isDone
-                        ? const Icon(LucideIcons.check,
-                            size: 13, color: Colors.white)
+                        ? const Icon(
+                            LucideIcons.check,
+                            size: 13,
+                            color: Colors.white,
+                          )
                         : null,
                   ),
                 ),
@@ -546,37 +596,42 @@ class _TodoViewState extends State<_TodoView> {
                           Expanded(
                             child: Text(
                               t.title,
-                              style: AppText.body(
-                                size: 14,
-                                weight: FontWeight.w500,
-                                color: isDone
-                                    ? AppColors.dark.withOpacity(0.4)
-                                    : AppColors.dark,
-                              ).copyWith(
-                                decoration: isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                decorationColor: AppColors.muted,
-                              ),
+                              style:
+                                  AppText.body(
+                                    size: 14,
+                                    weight: FontWeight.w500,
+                                    color: isDone
+                                        ? AppColors.dark.withOpacity(0.4)
+                                        : AppColors.dark,
+                                  ).copyWith(
+                                    decoration: isDone
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    decorationColor: AppColors.muted,
+                                  ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: color.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               t.category.label,
-                              style:
-                                  AppText.caption(size: 10, color: color),
+                              style: AppText.caption(size: 10, color: color),
                             ),
                           ),
                           const SizedBox(width: 10),
-                          const Icon(LucideIcons.gripVertical,
-                              size: 14, color: AppColors.muted),
+                          const Icon(
+                            LucideIcons.gripVertical,
+                            size: 14,
+                            color: AppColors.muted,
+                          ),
                           const SizedBox(width: 10),
                         ],
                       ),
@@ -600,11 +655,12 @@ class _CatChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _CatChip(
-      {required this.label,
-      required this.color,
-      required this.selected,
-      required this.onTap});
+  const _CatChip({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -617,22 +673,24 @@ class _CatChip extends StatelessWidget {
           color: selected ? AppColors.dark : AppColors.bg,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-              color: selected ? Colors.transparent : AppColors.border),
+            color: selected ? Colors.transparent : AppColors.border,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-                width: 8,
-                height: 8,
-                decoration:
-                    BoxDecoration(color: color, shape: BoxShape.circle)),
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
             const SizedBox(width: 5),
             Text(
               label,
               style: AppText.caption(
-                  size: 12,
-                  color: selected ? Colors.white : AppColors.muted),
+                size: 12,
+                color: selected ? Colors.white : AppColors.muted,
+              ),
             ),
           ],
         ),
@@ -687,15 +745,17 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
     final found = widget.categories.where((c) => c.id == catId).firstOrNull;
     if (found == null) return TodoCategoryRef.undefined;
     return TodoCategoryRef(
-        id: found.id, label: found.label, color: found.color);
+      id: found.id,
+      label: found.label,
+      color: found.color,
+    );
   }
 
   void _save() {
     if (_ctrl.text.trim().isEmpty) return;
-    widget.onSave(widget.todo.copyWith(
-      title: _ctrl.text.trim(),
-      category: _refFor(_catId),
-    ));
+    widget.onSave(
+      widget.todo.copyWith(title: _ctrl.text.trim(), category: _refFor(_catId)),
+    );
     Navigator.pop(context);
   }
 
@@ -719,13 +779,16 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(4)),
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
             ),
             const SizedBox(height: 20),
-            Text('編輯待辦',
-                style: AppText.body(size: 16, weight: FontWeight.w600)),
+            Text(
+              '編輯待辦',
+              style: AppText.body(size: 16, weight: FontWeight.w600),
+            ),
             const SizedBox(height: 14),
             TextField(
               controller: _ctrl,
@@ -737,16 +800,21 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
                 filled: true,
                 fillColor: AppColors.bg,
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none),
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
                 contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 11),
+                  horizontal: 14,
+                  vertical: 11,
+                ),
               ),
               style: AppText.body(size: 14),
             ),
             const SizedBox(height: 14),
-            Text('類別',
-                style: AppText.caption(size: 11, weight: FontWeight.w600)),
+            Text(
+              '類別',
+              style: AppText.caption(size: 11, weight: FontWeight.w600),
+            ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 7,
@@ -758,12 +826,14 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
                   selected: _catId == null,
                   onTap: () => setState(() => _catId = null),
                 ),
-                ...widget.categories.map((c) => _CatChip(
-                      label: c.label,
-                      color: c.color,
-                      selected: _catId == c.id,
-                      onTap: () => setState(() => _catId = c.id),
-                    )),
+                ...widget.categories.map(
+                  (c) => _CatChip(
+                    label: c.label,
+                    color: c.color,
+                    selected: _catId == c.id,
+                    onTap: () => setState(() => _catId = c.id),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -779,11 +849,14 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Center(
-                        child: Text('儲存',
-                            style: AppText.body(
-                                size: 14,
-                                weight: FontWeight.w600,
-                                color: Colors.white)),
+                        child: Text(
+                          '儲存',
+                          style: AppText.body(
+                            size: 14,
+                            weight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -799,12 +872,15 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
                         content: Text('確定要刪除「${widget.todo.title}」嗎？'),
                         actions: [
                           TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('取消')),
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
                           TextButton(
                             onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('刪除',
-                                style: TextStyle(color: Colors.red)),
+                            child: const Text(
+                              '刪除',
+                              style: TextStyle(color: Colors.red),
+                            ),
                           ),
                         ],
                       ),
@@ -819,11 +895,15 @@ class _EditTodoSheetState extends State<_EditTodoSheet> {
                     height: 44,
                     decoration: BoxDecoration(
                       border: Border.all(
-                          color: AppColors.rose.withOpacity(0.6)),
+                        color: AppColors.rose.withOpacity(0.6),
+                      ),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(LucideIcons.trash2,
-                        size: 16, color: AppColors.rose),
+                    child: const Icon(
+                      LucideIcons.trash2,
+                      size: 16,
+                      color: AppColors.rose,
+                    ),
                   ),
                 ),
               ],
@@ -887,8 +967,7 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets.bottom;
     // The "無分類" sentinel is never deletable.
-    final deletable =
-        _cats.where((c) => c.id != kUndefinedCategoryId).toList();
+    final deletable = _cats.where((c) => c.id != kUndefinedCategoryId).toList();
     return Padding(
       padding: EdgeInsets.only(bottom: insets),
       child: Container(
@@ -906,60 +985,79 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(4)),
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
             ),
             const SizedBox(height: 20),
-            Text('自訂類別',
-                style: AppText.body(size: 16, weight: FontWeight.w600)),
+            Text(
+              '自訂類別',
+              style: AppText.body(size: 16, weight: FontWeight.w600),
+            ),
             const SizedBox(height: 16),
 
             // Existing categories (sentinel excluded — not deletable)
             if (deletable.isNotEmpty) ...[
-              Text('已建立',
-                  style:
-                      AppText.caption(size: 11, weight: FontWeight.w600)),
+              Text(
+                '已建立',
+                style: AppText.caption(size: 11, weight: FontWeight.w600),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: deletable
-                    .map((c) => Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: c.color.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                                color: c.color.withOpacity(0.4)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                      color: c.color,
-                                      shape: BoxShape.circle)),
-                              const SizedBox(width: 6),
-                              Text(c.label,
-                                  style: AppText.caption(
-                                      size: 13, color: AppColors.dark)),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() => _cats.removeWhere(
-                                      (cat) => cat.id == c.id));
-                                  widget.onDelete(c.id);
-                                },
-                                child: const Icon(LucideIcons.x,
-                                    size: 13, color: AppColors.muted),
+                    .map(
+                      (c) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.color.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: c.color.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: c.color,
+                                shape: BoxShape.circle,
                               ),
-                            ],
-                          ),
-                        ))
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              c.label,
+                              style: AppText.caption(
+                                size: 13,
+                                color: AppColors.dark,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () {
+                                setState(
+                                  () => _cats.removeWhere(
+                                    (cat) => cat.id == c.id,
+                                  ),
+                                );
+                                widget.onDelete(c.id);
+                              },
+                              child: const Icon(
+                                LucideIcons.x,
+                                size: 13,
+                                color: AppColors.muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                     .toList(),
               ),
               const SizedBox(height: 16),
@@ -968,9 +1066,10 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
             ],
 
             // New category form
-            Text('新增類別',
-                style:
-                    AppText.caption(size: 11, weight: FontWeight.w600)),
+            Text(
+              '新增類別',
+              style: AppText.caption(size: 11, weight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _nameCtrl,
@@ -980,40 +1079,46 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
                 filled: true,
                 fillColor: AppColors.bg,
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
                 contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
+                  horizontal: 14,
+                  vertical: 10,
+                ),
               ),
               style: AppText.body(size: 14),
             ),
             const SizedBox(height: 12),
-            Text('選擇顏色',
-                style:
-                    AppText.caption(size: 11, weight: FontWeight.w600)),
+            Text(
+              '選擇顏色',
+              style: AppText.caption(size: 11, weight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 10,
               runSpacing: 10,
               children: _palette
-                  .map((c) => GestureDetector(
-                        onTap: () => setState(() => _selectedColor = c),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _selectedColor == c
-                                  ? AppColors.dark
-                                  : Colors.transparent,
-                              width: 2.5,
-                            ),
+                  .map(
+                    (c) => GestureDetector(
+                      onTap: () => setState(() => _selectedColor = c),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: c,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _selectedColor == c
+                                ? AppColors.dark
+                                : Colors.transparent,
+                            width: 2.5,
                           ),
                         ),
-                      ))
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
             const SizedBox(height: 18),
@@ -1028,14 +1133,18 @@ class _AddCategorySheetState extends State<_AddCategorySheet> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   decoration: BoxDecoration(
-                      color: AppColors.dark,
-                      borderRadius: BorderRadius.circular(14)),
+                    color: AppColors.dark,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   child: Center(
-                    child: Text('新增',
-                        style: AppText.body(
-                            size: 14,
-                            weight: FontWeight.w600,
-                            color: Colors.white)),
+                    child: Text(
+                      '新增',
+                      style: AppText.body(
+                        size: 14,
+                        weight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1066,19 +1175,23 @@ class _ProgressRingState extends State<_ProgressRing>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
-    _anim = Tween<double>(begin: 0, end: widget.progress).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
     );
+    _anim = Tween<double>(
+      begin: 0,
+      end: widget.progress,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
     _ctrl.forward();
   }
 
   @override
   void didUpdateWidget(_ProgressRing old) {
     super.didUpdateWidget(old);
-    _anim = Tween<double>(begin: _anim.value, end: widget.progress).animate(
-      CurvedAnimation(parent: _ctrl..reset(), curve: Curves.easeOut),
-    );
+    _anim = Tween<double>(
+      begin: _anim.value,
+      end: widget.progress,
+    ).animate(CurvedAnimation(parent: _ctrl..reset(), curve: Curves.easeOut));
     _ctrl.forward();
   }
 
@@ -1105,9 +1218,10 @@ class _ProgressRingState extends State<_ProgressRing>
               child: Text(
                 '${(_anim.value * 100).round()}%',
                 style: AppText.caption(
-                    size: 12,
-                    weight: FontWeight.w600,
-                    color: AppColors.dark),
+                  size: 12,
+                  weight: FontWeight.w600,
+                  color: AppColors.dark,
+                ),
               ),
             ),
           ],
@@ -1128,12 +1242,13 @@ class _RingPainter extends CustomPainter {
     const sw = 4.0;
 
     canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..color = AppColors.border
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = sw);
+      center,
+      radius,
+      Paint()
+        ..color = AppColors.border
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = sw,
+    );
 
     if (progress > 0) {
       canvas.drawArc(

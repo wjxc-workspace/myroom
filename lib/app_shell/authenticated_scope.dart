@@ -39,72 +39,89 @@ class AuthenticatedScope extends StatelessWidget {
 
   final Widget child;
 
+  static const Widget _loader = Scaffold(
+    backgroundColor: AppColors.bg,
+    body: Center(
+      child: SizedBox(
+        width: 28,
+        height: 28,
+        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.dark),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AppUser?>();
     if (user == null) {
       // Transient: redirect to /login is in flight.
-      return const Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.dark),
-          ),
-        ),
-      );
+      return _loader;
     }
 
     final db = context.read<FirebaseFirestore>();
     final uid = user.uid;
 
-    return MultiProvider(
-      // Rebuild the whole user tier if the signed-in uid changes.
-      key: ValueKey(uid),
-      providers: [
-        Provider<AppUser>.value(value: user),
+    // Wait for `provisionUser` to create the /users/{uid} root doc before
+    // mounting the user-scoped tier (Auth.md §3). Entering the shell against a
+    // half-provisioned account would race the device-tz patch against the
+    // trigger's settings write and briefly expose empty category streams. The
+    // root doc, settings/app, and default categories are written in one batch,
+    // so once the root doc exists the rest is present too.
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: db.collection('users').doc(uid).snapshots(),
+      builder: (context, snap) {
+        if (!(snap.data?.exists ?? false)) return _loader;
+        return MultiProvider(
+          // Rebuild the whole user tier if the signed-in uid changes.
+          key: ValueKey(uid),
+          providers: [
+            Provider<AppUser>.value(value: user),
 
-        // Storage repo (listed before NoteRepo, which reads it). Also consumed
-        // directly by the notes page for on-demand attachment download URLs.
-        Provider<StorageRepo>(
-          create: (c) => FirebaseStorageRepo(c.read<FirebaseStorage>()),
-        ),
+            // Storage repo (listed before NoteRepo, which reads it). Also consumed
+            // directly by the notes page for on-demand attachment download URLs.
+            Provider<StorageRepo>(
+              create: (c) => FirebaseStorageRepo(c.read<FirebaseStorage>()),
+            ),
 
-        // AI proxy over Cloud Functions callables (uid derived server-side from
-        // the App Check + Auth context; no client key).
-        Provider<AiService>(
-          create: (c) => CloudFunctionAiService(c.read<FirebaseFunctions>()),
-        ),
+            // AI proxy over Cloud Functions callables (uid derived server-side from
+            // the App Check + Auth context; no client key).
+            Provider<AiService>(
+              create: (c) =>
+                  CloudFunctionAiService(c.read<FirebaseFunctions>()),
+            ),
 
-        // ── Feature repos (user-scoped) ──
-        Provider<EventRepo>(create: (_) => FirebaseEventRepo(db, uid)),
-        Provider<TodoRepo>(create: (_) => FirebaseTodoRepo(db, uid)),
-        Provider<IdeaRepo>(create: (_) => FirebaseIdeaRepo(db, uid)),
-        Provider<NoteRepo>(
-          create: (c) => FirebaseNoteRepo(db, uid, c.read<StorageRepo>()),
-        ),
-        Provider<RecapRepo>(create: (_) => FirebaseRecapRepo(db, uid)),
-        Provider<AchievementRepo>(
-          create: (_) => FirebaseAchievementRepo(db, uid),
-        ),
-        Provider<ChatRepo>(create: (_) => FirebaseChatRepo(db, uid)),
+            // ── Feature repos (user-scoped) ──
+            Provider<EventRepo>(create: (_) => FirebaseEventRepo(db, uid)),
+            Provider<TodoRepo>(create: (_) => FirebaseTodoRepo(db, uid)),
+            Provider<IdeaRepo>(create: (_) => FirebaseIdeaRepo(db, uid)),
+            Provider<NoteRepo>(
+              create: (c) => FirebaseNoteRepo(db, uid, c.read<StorageRepo>()),
+            ),
+            Provider<RecapRepo>(create: (_) => FirebaseRecapRepo(db, uid)),
+            Provider<AchievementRepo>(
+              create: (_) => FirebaseAchievementRepo(db, uid),
+            ),
+            Provider<ChatRepo>(create: (_) => FirebaseChatRepo(db, uid)),
 
-        // ── Settings ──
-        Provider<SettingsRepo>(create: (_) => FirebaseSettingsRepo(db, uid)),
-        // Nullable: null = first snapshot not yet received. Consumers that just
-        // need values fall back to AppSettings.defaults; the tutorial gate and
-        // tz patch act only once a real snapshot has arrived.
-        StreamProvider<AppSettings?>(
-          create: (c) => c.read<SettingsRepo>().watchSettings(),
-          initialData: null,
-          catchError: (_, e) {
-            if (e != null) AppErrors.present(e);
-            return AppSettings.defaults;
-          },
-        ),
-      ],
-      child: child,
+            // ── Settings ──
+            Provider<SettingsRepo>(
+              create: (_) => FirebaseSettingsRepo(db, uid),
+            ),
+            // Nullable: null = first snapshot not yet received. Consumers that just
+            // need values fall back to AppSettings.defaults; the tutorial gate and
+            // tz patch act only once a real snapshot has arrived.
+            StreamProvider<AppSettings?>(
+              create: (c) => c.read<SettingsRepo>().watchSettings(),
+              initialData: null,
+              catchError: (_, e) {
+                if (e != null) AppErrors.present(e);
+                return AppSettings.defaults;
+              },
+            ),
+          ],
+          child: child,
+        );
+      },
     );
   }
 }
