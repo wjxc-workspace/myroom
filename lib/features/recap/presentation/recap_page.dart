@@ -8,6 +8,7 @@ import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/mr_add_row.dart';
 import '../../../core/widgets/mr_card.dart';
+import '../../../core/widgets/mr_skeleton.dart';
 import '../../../shared/ai/domain/ai_service.dart';
 import '../../../shared/storage/storage_repo.dart';
 import '../domain/achievement.dart';
@@ -72,14 +73,14 @@ class _RecapBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       children: [
         // ── Achievements (era summaries) ────────────────────────────────
-        _SectionHeader(
+        const _SectionHeader(
           icon: LucideIcons.compass,
           title: '階段回顧',
           subtitle: '過去、現在與未來的軌跡',
         ),
         const SizedBox(height: 12),
         if (achievements.isEmpty)
-          _EmptyHint(
+          const _EmptyHint(
             icon: LucideIcons.compass,
             text: '還沒有任何階段回顧。\n新增一張卡片，記下你的過去、現在與未來。',
           )
@@ -97,14 +98,14 @@ class _RecapBody extends StatelessWidget {
         const SizedBox(height: 30),
 
         // ── Recaps (titled reviews) ─────────────────────────────────────
-        _SectionHeader(
+        const _SectionHeader(
           icon: LucideIcons.bookOpen,
           title: '回顧紀錄',
           subtitle: '為一段時光寫下標題與回顧',
         ),
         const SizedBox(height: 12),
         if (recaps.isEmpty)
-          _EmptyHint(
+          const _EmptyHint(
             icon: LucideIcons.bookOpen,
             text: '還沒有任何回顧紀錄。\n為一段珍貴的時光寫下第一篇吧。',
           )
@@ -232,7 +233,7 @@ class _AchievementCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(LucideIcons.milestone, size: 14, color: AppColors.dark),
+              const Icon(LucideIcons.milestone, size: 14, color: AppColors.dark),
               const SizedBox(width: 7),
               Text('階段回顧',
                   style: AppText.body(
@@ -240,8 +241,8 @@ class _AchievementCard extends StatelessWidget {
               const Spacer(),
               GestureDetector(
                 onTap: () => _confirmDelete(context),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
                   child: Icon(LucideIcons.trash2, size: 15, color: AppColors.muted),
                 ),
               ),
@@ -327,7 +328,9 @@ class _EraBlock extends StatefulWidget {
 
 class _EraBlockState extends State<_EraBlock> {
   bool _editing = false;
-  bool _busy = false;
+  bool _generating = false;
+  bool _exporting = false;
+  bool get _busy => _generating || _exporting;
   late final TextEditingController _ctrl =
       TextEditingController(text: widget.value);
 
@@ -359,13 +362,13 @@ class _EraBlockState extends State<_EraBlock> {
 
   Future<void> _generate() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() => _generating = true);
     final res = await context.read<AiService>().generateEraInsight(
           eraLabel: widget.label,
           dataSummary: _eraSummary(widget.label, widget.value),
         );
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() => _generating = false);
     if (res is Ok<String> && res.value.trim().isNotEmpty) {
       _ctrl.text = res.value;
       widget.onSave(res.value); // persists; stream refreshes value
@@ -374,13 +377,13 @@ class _EraBlockState extends State<_EraBlock> {
 
   Future<void> _export() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() => _exporting = true);
     final res = await context.read<AiService>().exportAchievement(
           achievementId: widget.achievementId,
           era: widget.eraKey,
         );
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() => _exporting = false);
     if (res is Ok<String>) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
@@ -459,7 +462,12 @@ class _EraBlockState extends State<_EraBlock> {
             ],
           ),
           const SizedBox(height: 8),
-          if (_editing)
+          if (_generating)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: MrSkeletonLines(lines: 3, height: 11),
+            )
+          else if (_editing)
             TextField(
               controller: _ctrl,
               autofocus: true,
@@ -525,7 +533,9 @@ class _RecapCard extends StatefulWidget {
 }
 
 class _RecapCardState extends State<_RecapCard> {
-  bool _busy = false;
+  bool _generating = false;
+  bool _exporting = false;
+  bool get _busy => _generating || _exporting;
 
   Recap get recap => widget.recap;
 
@@ -556,13 +566,13 @@ class _RecapCardState extends State<_RecapCard> {
   Future<void> _generate() async {
     if (_busy) return;
     final label = recap.title.trim().isEmpty ? 'recap' : recap.title.trim();
-    setState(() => _busy = true);
+    setState(() => _generating = true);
     final res = await context.read<AiService>().generateEraInsight(
           eraLabel: label,
           dataSummary: _eraSummary('這篇回顧', recap.content),
         );
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() => _generating = false);
     if (res is Ok<String> && res.value.trim().isNotEmpty) {
       await context.read<RecapRepo>().update(
             Recap(
@@ -578,10 +588,10 @@ class _RecapCardState extends State<_RecapCard> {
 
   Future<void> _export() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() => _exporting = true);
     final res = await context.read<AiService>().exportRecap(recap.id);
     if (!mounted) return;
-    setState(() => _busy = false);
+    setState(() => _exporting = false);
     if (res is Ok<String>) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
@@ -647,7 +657,10 @@ class _RecapCardState extends State<_RecapCard> {
               ],
             ],
           ),
-          if (recap.content.isNotEmpty) ...[
+          if (_generating) ...[
+            const SizedBox(height: 9),
+            const MrSkeletonLines(lines: 2, height: 11),
+          ] else if (recap.content.isNotEmpty) ...[
             const SizedBox(height: 7),
             Text(
               recap.content,

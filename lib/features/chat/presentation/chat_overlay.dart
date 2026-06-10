@@ -39,15 +39,45 @@ class _ChatView extends StatefulWidget {
 }
 
 class _ChatViewState extends State<_ChatView> {
+  // Must match FirebaseChatRepo._pageSize: a full window means older history may
+  // exist, a short one means the thread start has been reached.
+  static const int _pageSize = 50;
+
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _sending = false;
+
+  // Pagination. The live stream only carries the latest [_pageSize] messages;
+  // older pages fetched via [loadOlder] are accumulated here. We merge both into
+  // [_byId] (the thread is append-only, so accumulating by id never gaps or
+  // double-counts) and render the id map sorted by createdAt.
+  final Map<String, ChatMessage> _byId = {};
+  bool _hasMore = false;
+  bool _initializedHasMore = false;
+  bool _loadingOlder = false;
+  String? _lastTailId;
 
   @override
   void dispose() {
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  /// Fetches the page of messages older than the oldest one currently shown and
+  /// merges it in. Triggered by the "載入較早的訊息" control at the top.
+  Future<void> _loadOlder(List<ChatMessage> current) async {
+    if (_loadingOlder || current.isEmpty) return;
+    setState(() => _loadingOlder = true);
+    final older = await context.read<ChatRepo>().loadOlder(current.first.createdAt);
+    if (!mounted) return;
+    setState(() {
+      for (final m in older) {
+        _byId[m.id] = m;
+      }
+      if (older.length < _pageSize) _hasMore = false;
+      _loadingOlder = false;
+    });
   }
 
   void _scrollToBottom() {
@@ -77,8 +107,28 @@ class _ChatViewState extends State<_ChatView> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = context.watch<List<ChatMessage>>();
-    if (messages.isNotEmpty || _sending) _scrollToBottom();
+    final streamed = context.watch<List<ChatMessage>>();
+    // Accumulate the live window into the id map (append-only → safe to merge).
+    for (final m in streamed) {
+      _byId[m.id] = m;
+    }
+    // Decide once, from the first non-empty window, whether older history exists.
+    if (!_initializedHasMore && streamed.isNotEmpty) {
+      _initializedHasMore = true;
+      _hasMore = streamed.length >= _pageSize;
+    }
+    final messages = _byId.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    // Auto-scroll to the latest only when a NEW tail message arrives (a send or
+    // an AI reply) — not when older history is prepended.
+    final tailId = messages.isNotEmpty ? messages.last.id : null;
+    if (tailId != _lastTailId) {
+      _lastTailId = tailId;
+      _scrollToBottom();
+    } else if (_sending) {
+      _scrollToBottom();
+    }
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -131,14 +181,28 @@ class _ChatViewState extends State<_ChatView> {
             Expanded(
               child: messages.isEmpty && !_sending
                   ? const _EmptyState()
-                  : ListView.builder(
-                      controller: _scrollCtrl,
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                      itemCount: messages.length + (_sending ? 1 : 0),
-                      itemBuilder: (_, idx) => idx < messages.length
-                          ? _Bubble(message: messages[idx])
-                          : const _TypingBubble(),
-                    ),
+                  : Builder(builder: (context) {
+                      // index 0 = load-more control (only when older history may
+                      // exist); then the messages; then the typing bubble.
+                      final lead = _hasMore ? 1 : 0;
+                      return ListView.builder(
+                        controller: _scrollCtrl,
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                        itemCount: lead + messages.length + (_sending ? 1 : 0),
+                        itemBuilder: (_, idx) {
+                          if (lead == 1 && idx == 0) {
+                            return _LoadMore(
+                              loading: _loadingOlder,
+                              onTap: () => _loadOlder(messages),
+                            );
+                          }
+                          final i = idx - lead;
+                          return i < messages.length
+                              ? _Bubble(message: messages[i])
+                              : const _TypingBubble();
+                        },
+                      );
+                    }),
             ),
 
             // Input row
@@ -205,6 +269,45 @@ class _ChatViewState extends State<_ChatView> {
   }
 }
 
+/// Top-of-thread control to fetch the previous page of messages.
+class _LoadMore extends StatelessWidget {
+  const _LoadMore({required this.loading, required this.onTap});
+
+  final bool loading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      child: Center(
+        child: loading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.muted),
+              )
+            : GestureDetector(
+                onTap: onTap,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text('載入較早的訊息',
+                      style: AppText.caption(size: 12, color: AppColors.muted)),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -259,15 +362,15 @@ class _TypingBubble extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.card,
-              borderRadius: const BorderRadius.only(
+              borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(18),
                 topRight: Radius.circular(18),
                 bottomLeft: Radius.circular(4),
                 bottomRight: Radius.circular(18),
               ),
-              boxShadow: const [kCardShadow],
+              boxShadow: [kCardShadow],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

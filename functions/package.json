@@ -13,7 +13,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "lint": "tsc --noEmit",
-    "test": "echo \"no tests yet\" && exit 0"
+    "test": "npm run build && node --test"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

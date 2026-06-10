@@ -323,7 +323,7 @@ class _IllustrationAdd extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child:
-                        Icon(LucideIcons.search, size: 14, color: AppColors.muted),
+                        const Icon(LucideIcons.search, size: 14, color: AppColors.muted),
                   ),
                 ],
               ),
@@ -335,7 +335,7 @@ class _IllustrationAdd extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(LucideIcons.cornerLeftUp, size: 20, color: AppColors.amber),
+                const Icon(LucideIcons.cornerLeftUp, size: 20, color: AppColors.amber),
                 const SizedBox(height: 4),
                 Container(
                   padding:
@@ -403,7 +403,7 @@ class _IllustrationNavBar extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(LucideIcons.pointer, size: 28, color: AppColors.muted),
+                  const Icon(LucideIcons.pointer, size: 28, color: AppColors.muted),
                   const SizedBox(height: 8),
                   Text('Click to navigate',
                       style: AppText.body(size: 13, color: AppColors.muted)),

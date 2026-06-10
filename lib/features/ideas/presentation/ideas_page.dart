@@ -9,6 +9,7 @@ import '../../../core/app_errors.dart';
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/mr_card.dart';
+import '../../../core/widgets/mr_skeleton.dart';
 import '../../../shared/ai/domain/ai_resource.dart';
 import '../../../shared/ai/domain/ai_service.dart';
 import '../domain/idea.dart';
@@ -399,8 +400,8 @@ class _IdeasViewState extends State<_IdeasView> {
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => _editIdea(idea),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 4),
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 4),
                           child: Icon(LucideIcons.pencil,
                               size: 14, color: AppColors.muted),
                         ),
@@ -409,8 +410,8 @@ class _IdeasViewState extends State<_IdeasView> {
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => _deleteIdea(idea.id),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 6),
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 6),
                           child: Icon(LucideIcons.trash2,
                               size: 14, color: AppColors.muted),
                         ),
@@ -443,15 +444,35 @@ class _IdeasViewState extends State<_IdeasView> {
   /// subtle "分析中…" while processing, and otherwise nothing extra.
   Widget _buildAiPanel(Idea idea) {
     if (idea.aiSummary == null) {
+      // Loading skeleton while the enrichIdea trigger generates the summary.
       if (idea.aiStatus == 'processing') {
-        return Row(
-          children: [
-            Icon(LucideIcons.sparkles,
-                size: 13, color: AppColors.amber.withOpacity(0.7)),
-            const SizedBox(width: 6),
-            Text('分析中…',
-                style: AppText.caption(size: 12, color: AppColors.muted)),
-          ],
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.dark,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(LucideIcons.sparkles,
+                      size: 13, color: AppColors.amber.withOpacity(0.7)),
+                  const SizedBox(width: 6),
+                  Text('分析中…',
+                      style: AppText.caption(
+                          size: 12, color: Colors.white.withOpacity(0.7))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              MrSkeletonLines(
+                lines: 2,
+                height: 10,
+                baseColor: Colors.white.withOpacity(0.12),
+              ),
+            ],
+          ),
         );
       }
       return const SizedBox.shrink();
@@ -599,7 +620,7 @@ class _IdeasViewState extends State<_IdeasView> {
           const SizedBox(height: 8),
           ...pinned.map((r) => _buildResourceCard(r)),
           const SizedBox(height: 4),
-          Divider(color: AppColors.border, height: 24),
+          const Divider(color: AppColors.border, height: 24),
         ],
 
         // AI recommendations

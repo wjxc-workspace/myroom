@@ -22,6 +22,10 @@ linter:
   # producing the lint.
   rules:
     prefer_final_fields: false
+    # Phase 3 strict lints (Phasing.md §Phase 3).
+    avoid_print: true
+    unawaited_futures: true
+    prefer_const_constructors: true
 
 analyzer:
   errors:

@@ -189,7 +189,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           Center(child: Text(email, style: AppText.caption(size: 11))),
                         ],
                         const SizedBox(height: 28),
-                        _SectionLabel(label: '關於我', icon: LucideIcons.user),
+                        const _SectionLabel(label: '關於我', icon: LucideIcons.user),
                         const SizedBox(height: 8),
                         _FieldCard(
                           controller: _introCtrl,
@@ -200,7 +200,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text('AI 聊天時會將此資訊納入背景，提供更個人化的回覆。',
                             style: AppText.caption(size: 11)),
                         const SizedBox(height: 24),
-                        _SectionLabel(
+                        const _SectionLabel(
                             label: 'AI 回覆指示', icon: LucideIcons.sparkles),
                         const SizedBox(height: 8),
                         _FieldCard(
@@ -212,7 +212,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text('非必填。留白則使用預設的簡潔友善語氣。',
                             style: AppText.caption(size: 11)),
                         const SizedBox(height: 24),
-                        _SectionLabel(label: 'AI 功能', icon: LucideIcons.bot),
+                        const _SectionLabel(label: 'AI 功能', icon: LucideIcons.bot),
                         const SizedBox(height: 8),
                         Container(
                           decoration: BoxDecoration(

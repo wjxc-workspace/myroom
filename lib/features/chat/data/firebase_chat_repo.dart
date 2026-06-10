@@ -22,12 +22,10 @@ class FirebaseChatRepo implements ChatRepo {
       .map((s) => s.docs.map(ChatMessage.fromFirestore).toList().reversed.toList());
 
   @override
-  Future<List<ChatMessage>> loadOlder(
-    DocumentSnapshot<Map<String, dynamic>> cursor,
-  ) async {
+  Future<List<ChatMessage>> loadOlder(DateTime before) async {
     final snap = await _col
+        .where('createdAt', isLessThan: Timestamp.fromDate(before))
         .orderBy('createdAt', descending: true)
-        .startAfterDocument(cursor)
         .limit(_pageSize)
         .get();
     return snap.docs.map(ChatMessage.fromFirestore).toList().reversed.toList();
