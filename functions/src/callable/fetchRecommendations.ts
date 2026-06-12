@@ -20,7 +20,6 @@ interface RawResource {
 export const fetchRecommendations = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 60,
     memory: "256MiB",
     secrets: ["OPENAI_API_KEY"],

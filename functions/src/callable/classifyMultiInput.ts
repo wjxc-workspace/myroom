@@ -55,7 +55,6 @@ const n = (v: unknown, d: number): number =>
 export const classifyMultiInput = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 60,
     memory: "512MiB",
     secrets: ["OPENAI_API_KEY"],

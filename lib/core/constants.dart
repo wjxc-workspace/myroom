@@ -1,5 +1,5 @@
 /// Cloud Functions / Firestore region. Taiwan — Firestore + Functions colocated.
-const String kFunctionsRegion = 'asia-east1';
+const String kFunctionsRegion = 'us-central1';
 
 /// Fixed document id of the per-user preferences singleton.
 const String kSettingsDocId = 'app';

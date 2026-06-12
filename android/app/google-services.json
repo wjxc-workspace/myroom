@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "787435572031",
+    "project_id": "myroom-da81b",
+    "storage_bucket": "myroom-da81b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:787435572031:android:71faa853e5c203c3f0618a",
+        "android_client_info": {
+          "package_name": "com.myroom.myroom"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "787435572031-9tin4pudfd5k3mld1nkmse9v9hcpi2to.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAX_jLDlIfW7WC_e8bd0PuL3GuhpmmcflE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "787435572031-9tin4pudfd5k3mld1nkmse9v9hcpi2to.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "787435572031-c3qpetrlm3l8tm2emjbagbt8b1phdip9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.myroom.myroom"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

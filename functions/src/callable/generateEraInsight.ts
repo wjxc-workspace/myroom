@@ -12,7 +12,6 @@ import { requireUid } from "../middleware/auth";
 export const generateEraInsight = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 60,
     memory: "256MiB",
     secrets: ["OPENAI_API_KEY"],

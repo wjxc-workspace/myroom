@@ -36,29 +36,30 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'myroom-app',
-    authDomain: 'myroom-app.firebaseapp.com',
-    storageBucket: 'myroom-app.appspot.com',
+    apiKey: 'AIzaSyBS5QD8VXMkBJDxXW5pCX5d6-f6IdCmJEU',
+    appId: '1:787435572031:web:d5b26d5a39a52a56f0618a',
+    messagingSenderId: '787435572031',
+    projectId: 'myroom-da81b',
+    authDomain: 'myroom-da81b.firebaseapp.com',
+    storageBucket: 'myroom-da81b.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'myroom-app',
-    storageBucket: 'myroom-app.appspot.com',
+    apiKey: 'AIzaSyAX_jLDlIfW7WC_e8bd0PuL3GuhpmmcflE',
+    appId: '1:787435572031:android:71faa853e5c203c3f0618a',
+    messagingSenderId: '787435572031',
+    projectId: 'myroom-da81b',
+    storageBucket: 'myroom-da81b.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'myroom-app',
-    storageBucket: 'myroom-app.appspot.com',
-    iosBundleId: 'com.example.myroom',
+    apiKey: 'AIzaSyAJZHyu0JM4ZEu3aVmlbzE81qdtNkoNvb0',
+    appId: '1:787435572031:ios:e8d818c79337bc57f0618a',
+    messagingSenderId: '787435572031',
+    projectId: 'myroom-da81b',
+    storageBucket: 'myroom-da81b.firebasestorage.app',
+    iosClientId: '787435572031-c3qpetrlm3l8tm2emjbagbt8b1phdip9.apps.googleusercontent.com',
+    iosBundleId: 'com.myroom.myroom',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -71,11 +72,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'myroom-app',
-    authDomain: 'myroom-app.firebaseapp.com',
-    storageBucket: 'myroom-app.appspot.com',
+    apiKey: 'AIzaSyBS5QD8VXMkBJDxXW5pCX5d6-f6IdCmJEU',
+    appId: '1:787435572031:web:154e23307b3bbd89f0618a',
+    messagingSenderId: '787435572031',
+    projectId: 'myroom-da81b',
+    authDomain: 'myroom-da81b.firebaseapp.com',
+    storageBucket: 'myroom-da81b.firebasestorage.app',
   );
+
 }

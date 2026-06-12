@@ -11,4 +11,4 @@ export const db = getFirestore();
 export const storage = getStorage();
 
 /** Firestore + Functions region (Taiwan; colocated). */
-export const REGION = "asia-east1";
+export const REGION = "us-central1";

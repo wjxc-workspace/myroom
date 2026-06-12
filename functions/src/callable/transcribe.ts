@@ -12,7 +12,6 @@ import { requireUid } from "../middleware/auth";
 export const transcribe = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 120,
     memory: "512MiB",
     secrets: ["OPENAI_API_KEY"],

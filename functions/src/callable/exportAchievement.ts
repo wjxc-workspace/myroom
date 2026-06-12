@@ -16,7 +16,6 @@ const ERA_LABEL: Record<string, string> = {
 export const exportAchievement = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 120,
     memory: "256MiB",
   },

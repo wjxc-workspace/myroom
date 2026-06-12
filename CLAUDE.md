@@ -13,7 +13,7 @@ recaps). A recap page summarizes achievements and past/future eras.
   provider tier (auth + Firebase singletons + `AiService`) is in `app.dart`; user-scoped repos mount
   in `app_shell/authenticated_scope.dart`, built from a non-null `uid` after the `users/{uid}` root
   doc exists.
-- **Backend (`functions/`)** — TypeScript Cloud Functions, region `asia-east1`. Seven callables
+- **Backend (`functions/`)** — TypeScript Cloud Functions, region `us-central1`. Seven callables
   (`chat`, `classifyMultiInput`, `fetchRecommendations`, `generateEraInsight`, `transcribe`,
   `exportRecap`, `exportAchievement`) on the OpenAI Responses API, plus triggers (`provisionUser`,
   `deleteUserData`, `enrichIdea`, `classifyNote`, `findNotesForCategory`, `categoryFanout`,
@@ -25,7 +25,7 @@ recaps). A recap page summarizes achievements and past/future eras.
   category types share a permanent `無分類` sentinel with fixed id `undefined`.
 - **Security** — per-collection owner-only Firestore/Storage rules (`firestore/firestore.rules`,
   `storage.rules`); function-owned fields (`aiSummary`/`aiStatus`/`links`, `*ExportStoragePath`,
-  `chat_messages`, `_internal`) are not client-writable; `createdAt` is immutable. App Check enforced.
+  `chat_messages`, `_internal`) are not client-writable; `createdAt` is immutable.
 
 ## Conventions
 

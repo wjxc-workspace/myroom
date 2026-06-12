@@ -10,7 +10,6 @@ import { requireUid } from "../middleware/auth";
 export const exportRecap = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 120,
     memory: "256MiB",
   },

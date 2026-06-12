@@ -1,5 +1,4 @@
-// Callable auth + settings loading (AI_proxy.md §2). App Check is enforced via
-// the `enforceAppCheck` onCall option; here we assert an authenticated user and
+// Callable auth + settings loading (AI_proxy.md §2); here we assert an authenticated user and
 // load the `settings/app` singleton (selfIntro / rules / tz / autoEnrich).
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
 

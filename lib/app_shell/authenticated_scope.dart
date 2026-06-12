@@ -84,7 +84,7 @@ class AuthenticatedScope extends StatelessWidget {
             ),
 
             // AI proxy over Cloud Functions callables (uid derived server-side from
-            // the App Check + Auth context; no client key).
+            // the Auth context; no client key).
             Provider<AiService>(
               create: (c) =>
                   CloudFunctionAiService(c.read<FirebaseFunctions>()),

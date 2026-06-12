@@ -35,7 +35,6 @@ function functionCalls(output: Array<Record<string, unknown>>): FunctionCall[] {
 export const chat = onCall(
   {
     region: REGION,
-    enforceAppCheck: true,
     timeoutSeconds: 120,
     memory: "512MiB",
     secrets: ["OPENAI_API_KEY"],

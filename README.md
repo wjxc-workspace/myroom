@@ -36,14 +36,13 @@ routed to a note are uploaded to Storage (content-addressed by `sha256`).
   `Result`; the UI re-renders from the stream (no hand-rolled optimistic store).
 - **Persistence** — Firestore only, per-user isolated under `users/{uid}/…`. Category metadata is
   denormalized onto todos/notes and kept fresh by a Cloud Function.
-- **AI / backend** — Cloud Functions (region `asia-east1`) on the OpenAI Responses API. Seven
+- **AI / backend** — Cloud Functions (region `us-central1`) on the OpenAI Responses API. Seven
   callables (`chat`, `classifyMultiInput`, `fetchRecommendations`, `generateEraInsight`,
   `transcribe`, `exportRecap`, `exportAchievement`) and triggers (`provisionUser`, `deleteUserData`,
   `enrichIdea`, `classifyNote`, `findNotesForCategory`, `categoryFanout`, `storageCascade`).
 - **Auth** — Firebase Auth (Email/Password + Google; Apple on iOS). A new account is provisioned
   server-side (`provisionUser`) with its settings doc and default categories before the shell loads.
-- **Security** — per-collection owner-only Firestore/Storage rules; App Check on Firestore, Storage,
-  and callables. Function-owned fields are never client-writable.
+- **Security** — per-collection owner-only Firestore/Storage rules; Function-owned fields are never client-writable.
 
 ```
 lib/
@@ -68,21 +67,20 @@ for the functions.
 
 ```bash
 flutter pub get
-flutterfire configure          # generates lib/firebase_options.dart for your project
-cd functions && npm ci         # backend deps
-firebase functions:secrets:set OPENAI_API_KEY    # OpenAI key lives only in Secret Manager
+flutterfire configure --project=YOUR_PROJECT  # generates lib/firebase_options.dart for your project
+firebase init functions
+flutterfire configure
+firebase functions:secrets:set OPENAI_API_KEY # You'll be prompt to paste the secret value.
+firebase deploy --only firestore:rules,firestore:indexes,storage,functions
 ```
 
 Run locally against the Emulator Suite (Auth + Firestore + Storage + Functions):
 
 ```bash
-firebase emulators:start
 flutter run                    # Android / iOS
 flutter run -d windows         # Windows desktop
 flutter run -d chrome          # Web
 ```
-
-Deploy backend: `firebase deploy --only firestore:rules,firestore:indexes,storage,functions`.
 
 ---
 

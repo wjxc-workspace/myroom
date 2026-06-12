@@ -8,27 +8,58 @@
   },
   "functions": [
     {
-      "source": "functions",
       "codebase": "default",
       "ignore": [
         "node_modules",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local",
-        "test"
+        "*.local"
       ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run build"
-      ]
+      ],
+      "source": "functions"
     }
   ],
   "emulators": {
-    "auth": { "port": 9099 },
-    "firestore": { "port": 8080 },
-    "storage": { "port": 9199 },
-    "functions": { "port": 5001 },
-    "ui": { "enabled": true },
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "functions": {
+      "port": 5001
+    },
+    "ui": {
+      "enabled": true
+    },
     "singleProjectMode": true
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "myroom-da81b",
+          "appId": "1:787435572031:android:71faa853e5c203c3f0618a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "myroom-da81b",
+          "configurations": {
+            "android": "1:787435572031:android:71faa853e5c203c3f0618a",
+            "ios": "1:787435572031:ios:e8d818c79337bc57f0618a",
+            "web": "1:787435572031:web:d5b26d5a39a52a56f0618a",
+            "windows": "1:787435572031:web:154e23307b3bbd89f0618a"
+          }
+        }
+      }
+    }
   }
 }
