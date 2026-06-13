@@ -293,6 +293,7 @@ class _IdeasViewState extends State<_IdeasView> {
   Widget _buildInput() {
     final ideas = context.watch<List<Idea>>();
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
       children: [
         MrCard(

@@ -181,6 +181,7 @@ class _TodoViewState extends State<_TodoView> {
     final repo = context.read<TodoRepo>();
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _EditTodoSheet(
@@ -196,6 +197,7 @@ class _TodoViewState extends State<_TodoView> {
     final repo = context.read<TodoRepo>();
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) => _AddCategorySheet(
@@ -231,6 +233,7 @@ class _TodoViewState extends State<_TodoView> {
     final items = _filtered(todos);
 
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -47,6 +47,7 @@ Future<NoteSheetResult?> showNoteModalSheet(
 }) {
   return showModalBottomSheet<NoteSheetResult>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _NoteSheet(
