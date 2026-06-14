@@ -4,14 +4,21 @@ import '../../../core/result.dart';
 import 'ai_resource.dart';
 import 'classification.dart';
 
+/// Returned by [AiService.chat]: the assistant reply and the OpenAI response ID
+/// to pass as [AiService.chat]'s `previousResponseId` on the next turn so the
+/// session continues without re-sending history.
+typedef ChatResult = ({String reply, String responseId});
+
 /// Client surface over the Cloud Functions AI callables (AI_proxy.md). There is
 /// no client OpenAI key — every call goes through Functions. Errors come back as
 /// typed [Failure]s (AiFailure / RateLimitFailure) and are surfaced as the top
 /// error banner by the implementation.
 abstract class AiService {
-  /// Sends a chat message; the function appends the user + assistant turns to
-  /// `chat_messages` (the UI updates from its stream). Returns the reply text.
-  Future<Result<String>> chat(String message);
+  /// Sends a chat message and returns the assistant reply plus a session token.
+  /// Pass the previous [ChatResult.responseId] as [previousResponseId] to
+  /// continue the conversation within the same session; omit it (or pass null)
+  /// to start a fresh thread.
+  Future<Result<ChatResult>> chat(String message, {String? previousResponseId});
 
   /// Classifies a Smart Add submission into typed items (AI_proxy.md §5).
   Future<Result<List<ClassificationItem>>> classifyMultiInput({

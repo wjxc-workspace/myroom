@@ -29,7 +29,7 @@ class AppScaffold extends StatefulWidget {
 }
 
 class _AppScaffoldState extends State<AppScaffold> {
-  static const _pageTitles = ['行事曆', '待辦', '靈感', '札記', '月誌', '成就'];
+  static const _pageTitles = ['行事曆', '待辦', '靈感', '札記', '時光軸'];
 
   bool _tzChecked = false;
   bool _tutorialDismissed = false;
@@ -191,6 +191,8 @@ class _AppScaffoldState extends State<AppScaffold> {
 
   Widget _buildPageTitle(DateTime now) {
     final idx = widget.navigationShell.currentIndex;
+    // Recap tab (idx 4) renders its own title row with the sub-page switcher.
+    if (idx == 4) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
       child: Column(

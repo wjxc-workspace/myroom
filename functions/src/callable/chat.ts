@@ -1,11 +1,9 @@
 // chat (AI_proxy.md §2). Runs the full tool loop server-side (≤6 rounds),
-// executing mutations via the Admin SDK, then appends the user + assistant turns
-// to chat_messages. The client only reads its chat_messages stream; the UI
-// updates reactively from the writes the tools make.
+// executing mutations via the Admin SDK. Messages are not persisted to Firestore;
+// the client holds the thread in memory for the session only.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { FieldValue } from "firebase-admin/firestore";
 
-import { db, REGION } from "../lib/admin";
+import { REGION } from "../lib/admin";
 import { findNoteCat, loadNoteCats, loadTodoCats } from "../lib/categories";
 import { LOOP_LIMIT_REPLY, MAX_CHAT_ROUNDS, MODELS, REQ_TIMEOUT } from "../lib/config";
 import { buildContext } from "../lib/context";
@@ -43,7 +41,9 @@ export const chat = onCall(
     const uid = requireUid(req);
     await enforceRateLimit(uid);
 
-    const message = String((req.data as { message?: string })?.message ?? "").trim();
+    const { message: rawMessage, previousResponseId } =
+      req.data as { message?: string; previousResponseId?: string };
+    const message = String(rawMessage ?? "").trim();
     if (!message) throw new HttpsError("invalid-argument", "訊息不可為空");
 
     const settings = await loadSettings(uid);
@@ -69,17 +69,8 @@ export const chat = onCall(
     });
     const tools = buildChatTools(todoCats);
 
-    // Append the user turn first so it shows in the stream while the AI runs and
-    // is guaranteed to sort before the assistant turn (distinct serverTs).
-    const col = db.collection(`users/${uid}/chat_messages`);
-    await col.add({
-      role: "user",
-      content: message,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
     let reply = "";
-    let prevId: string | undefined;
+    let prevId: string | undefined = previousResponseId || undefined;
     // Responses-API continuation: first turn sends the user message; each tool
     // round sends only the function_call_output items + previous_response_id.
     let nextInput: unknown = [{ role: "user", content: message }];
@@ -121,13 +112,6 @@ export const chat = onCall(
     }
     if (!reply) reply = LOOP_LIMIT_REPLY;
 
-    // Append the assistant turn (single flat thread; createdAt = serverTs).
-    await col.add({
-      role: "assistant",
-      content: reply,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    return { reply };
+    return { reply, responseId: prevId ?? "" };
   }
 );

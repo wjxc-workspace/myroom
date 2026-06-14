@@ -40,10 +40,22 @@ class CloudFunctionAiService implements AiService {
       Map<String, dynamic>.from((data as Map?) ?? const {});
 
   @override
-  Future<Result<String>> chat(String message) => _guard(() async {
+  Future<Result<ChatResult>> chat(
+    String message, {
+    String? previousResponseId,
+  }) =>
+      _guard(() async {
         final res = await _fn('chat', timeout: const Duration(seconds: 120))
-            .call<Object?>({'message': message});
-        return (_asMap(res.data)['reply'] as String?) ?? '';
+            .call<Object?>({
+          'message': message,
+          if (previousResponseId != null && previousResponseId.isNotEmpty)
+            'previousResponseId': previousResponseId,
+        });
+        final data = _asMap(res.data);
+        return (
+          reply: (data['reply'] as String?) ?? '',
+          responseId: (data['responseId'] as String?) ?? '',
+        );
       });
 
   @override
