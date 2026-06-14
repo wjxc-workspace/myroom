@@ -39,3 +39,12 @@ recaps). A recap page summarizes achievements and past/future eras.
 
 `flutter analyze` · `flutter test` · `npm --prefix functions test` (tsc build + helper tests).
 Emulator-based repo/rules/trigger tests need a live Emulator Suite and real `firebase_options.dart`.
+
+## Rules When User Ask To Add A Feature Or Modification
+- If the user's request is unclear, use AskUserQuestion to request clarification.
+- Gather information and plan ahead before editing.
+- Only modify code directly related to the target.
+- Do not rename variables unless necessary.
+- Ensure editing is clear and concise; avoid modifying or creating global variables, and avoid passing variables across multiple classes or layers. If necessary, stop editing, discuss the reasons with the user, and await approval.
+- Make sure the features are iOS and Andriod compatitable first, especially when using external libraries.
+- Comments are not needed in code for minor modification or bugfix.

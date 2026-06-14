@@ -13,6 +13,11 @@ abstract class IdeaRepo {
 
   Future<Result<void>> updateText(String id, String text);
 
+  /// Requests fresh AI enrichment for an existing idea without changing its
+  /// text — bumps the client-writable `reenrichAt` field, which the `enrichIdea`
+  /// trigger watches to re-run (`aiSummary`/`aiStatus`/`links` stay fn-only).
+  Future<Result<void>> reenrich(String id);
+
   Future<Result<void>> delete(String id);
 
   /// Streams pinned resources, ordered by `sortOrder`.
