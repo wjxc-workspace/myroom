@@ -56,14 +56,33 @@ class _TodoViewState extends State<_TodoView> {
   bool _showAdd = false;
   bool _showDone = true;
 
-  // Items completed during this view session stay in place (no jump to bottom)
-  // until the next rebuild that drops them — mirrors the demo's behavior.
+  // Items completed during this view session stay in place (no jump to bottom).
+  // Cleared when the tab is re-entered (see didChangeDependencies) so completed
+  // todos sink to the bottom the next time the Todo page is shown.
   final Set<String> _justDone = {};
+
+  // Tracks Todo-tab visibility. The shell keeps this page alive in an
+  // IndexedStack and wraps inactive branches in TickerMode(enabled: false), so
+  // this flips false on leaving the tab and true on returning.
+  bool _wasVisible = true;
 
   final _newTextCtrl = TextEditingController();
   final _addFocus = FocusNode();
   // null = "無分類" sentinel; otherwise a custom category id.
   String? _newCatId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Detect re-entering the Todo tab. On return, forget which items were just
+    // completed so _ordered() re-sorts them to the bottom this build.
+    final visible = TickerMode.of(context);
+    if (visible && !_wasVisible) {
+      // A build follows didChangeDependencies, so no setState needed.
+      _justDone.clear();
+    }
+    _wasVisible = visible;
+  }
 
   @override
   void dispose() {
@@ -435,14 +454,6 @@ class _TodoViewState extends State<_TodoView> {
             spacing: 7,
             runSpacing: 6,
             children: [
-              // "無分類" sentinel option (default).
-              _CatChip(
-                label: '無分類',
-                color: AppColors.muted,
-                selected:
-                    _newCatId == null || _newCatId == kUndefinedCategoryId,
-                onTap: () => setState(() => _newCatId = null),
-              ),
               ...cats.map(
                 (c) => _CatChip(
                   label: c.label,
