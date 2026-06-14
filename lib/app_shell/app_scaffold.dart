@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +33,7 @@ class _AppScaffoldState extends State<AppScaffold> {
 
   bool _tzChecked = false;
   bool _tutorialDismissed = false;
+  bool _navBarVisible = true;
 
   void _goBranch(int index) {
     widget.navigationShell.goBranch(
@@ -60,6 +62,20 @@ class _AppScaffoldState extends State<AppScaffold> {
     context.read<SettingsRepo>().updateSettings(tutorialSeen: true);
   }
 
+  /// Flies the bottom nav bar out when the active tab is scrolled down and
+  /// back in when it is scrolled up. Only the main vertical scroll counts;
+  /// horizontal scrollers (the calendar pager, filter chips) are ignored.
+  bool _handleNavBarScroll(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.direction == ScrollDirection.reverse && _navBarVisible) {
+      setState(() => _navBarVisible = false);
+    } else if (notification.direction == ScrollDirection.forward &&
+        !_navBarVisible) {
+      setState(() => _navBarVisible = true);
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<AppSettings?>();
@@ -85,7 +101,15 @@ class _AppScaffoldState extends State<AppScaffold> {
               children: [
                 _buildTopBar(context),
                 _buildPageTitle(now),
-                Expanded(child: widget.navigationShell),
+                Expanded(
+                  // A vertical scroll in the active tab flies the bottom nav
+                  // bar out (scroll down) / back in (scroll up). The scroll
+                  // notifications bubble up from the pages nested in the shell.
+                  child: NotificationListener<UserScrollNotification>(
+                    onNotification: _handleNavBarScroll,
+                    child: widget.navigationShell,
+                  ),
+                ),
               ],
             ),
             if (!showTutorial)
@@ -93,9 +117,16 @@ class _AppScaffoldState extends State<AppScaffold> {
                 bottom: 22,
                 left: 20,
                 right: 20,
-                child: BottomNavBar(
-                  activeIndex: widget.navigationShell.currentIndex,
-                  onTap: _goBranch,
+                // When hidden, slide the bar fully past the bottom edge; 2.5×
+                // its height clears the safe-area inset on any device.
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                  offset: _navBarVisible ? Offset.zero : const Offset(0, 2.5),
+                  child: BottomNavBar(
+                    activeIndex: widget.navigationShell.currentIndex,
+                    onTap: _goBranch,
+                  ),
                 ),
               ),
             if (showTutorial) TutorialOverlay(onDone: _dismissTutorial),

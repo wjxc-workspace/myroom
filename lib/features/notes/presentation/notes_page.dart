@@ -196,6 +196,7 @@ class _NotesViewState extends State<_NotesView> {
     final today = DateTime(now.year, now.month, now.day);
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
       children: [
         // Month / year navigation
@@ -365,6 +366,7 @@ class _NotesViewState extends State<_NotesView> {
     List<NoteCategory> categories,
   ) {
     return GridView.count(
+      physics: const AlwaysScrollableScrollPhysics(),
       crossAxisCount: 2,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
       crossAxisSpacing: 12,
@@ -798,6 +800,7 @@ class _CatDetail extends StatelessWidget {
         builder: (context) {
           final notes = context.watch<List<Note>>();
           return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
             children: [
               // Header

@@ -4,6 +4,10 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>需要麥克風權限以錄製語音輸入。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>需要相片權限以新增圖片附件。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>需要相機權限以拍攝圖片附件。</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

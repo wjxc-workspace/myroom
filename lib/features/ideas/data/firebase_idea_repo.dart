@@ -67,6 +67,22 @@ class FirebaseIdeaRepo implements IdeaRepo {
   }
 
   @override
+  Future<Result<void>> reenrich(String id) async {
+    try {
+      // Bump a client-writable nonce; the enrichIdea trigger re-runs on its
+      // change. aiSummary/aiStatus/links remain fn-only (security rules).
+      await _ideasCol.doc(id).update({
+        'reenrichAt': FieldValue.serverTimestamp(),
+      });
+      return const Ok(null);
+    } catch (e) {
+      final f = mapFirebase(e);
+      AppErrors.present(f);
+      return Err(f);
+    }
+  }
+
+  @override
   Future<Result<void>> delete(String id) async {
     try {
       await _ideasCol.doc(id).delete();

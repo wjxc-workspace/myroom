@@ -22,6 +22,7 @@ String _hm(DateTime dt) => '${fmt2(dt.hour)}:${fmt2(dt.minute)}';
 Future<TimeOfDay?> _show24hTimePicker(BuildContext context, TimeOfDay initial) {
   return showModalBottomSheet<TimeOfDay>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _TimePickerSheet(initial: initial),
   );
@@ -438,6 +439,7 @@ class _CalendarBodyState extends State<_CalendarBody> {
     final repo = context.read<EventRepo>();
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       enableDrag: false,
@@ -460,6 +462,7 @@ class _CalendarBodyState extends State<_CalendarBody> {
     final repo = context.read<EventRepo>();
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       enableDrag: false,
@@ -484,16 +487,17 @@ class _CalendarBodyState extends State<_CalendarBody> {
     final repo = context.read<EventRepo>();
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _EventDetailSheet(
         event: e,
         onDelete: (id) {
-          Navigator.pop(context);
+          Navigator.of(context, rootNavigator: true).pop();
           repo.delete(id);
         },
         onEdit: () {
-          Navigator.pop(context);
+          Navigator.of(context, rootNavigator: true).pop();
           _showEditModal(e);
         },
       ),
@@ -545,6 +549,9 @@ class _MonthView extends StatelessWidget {
         const SizedBox(height: 4),
         Expanded(
           child: SingleChildScrollView(
+            // Always scrollable so a short month still drives the nav-bar
+            // fly-out/in animation.
+            physics: const AlwaysScrollableScrollPhysics(),
             padding:
                 const EdgeInsets.only(left: 20, right: 20, bottom: 100),
             child: GridView.builder(
@@ -1040,11 +1047,21 @@ class _DayView extends StatelessWidget {
         ),
         Expanded(
           child: all.isEmpty
-              ? Center(
-                  child: Text('今天沒有行程',
-                      style: AppText.body(color: AppColors.muted)),
+              ? LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Center(
+                        child: Text('今天沒有行程',
+                            style: AppText.body(color: AppColors.muted)),
+                      ),
+                    ),
+                  ),
                 )
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
                   itemCount: all.length,
                   itemBuilder: (context, i) {
