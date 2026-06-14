@@ -39,45 +39,59 @@ export function classifyMultiSystemPrompt(args: {
   noteCats: CatOption[];
   userSpecifiedCat: string;
 }): string {
-  return `你是一個個人生產力助理，使用繁體中文。使用者的輸入可能包含多個不同主題的事項。
-分析全部內容，拆解成數個彼此獨立的事項，每個事項都只能被分類到以下五種類型之一，並回傳 JSON。
+  return `你是一個個人生產力助理，使用繁體中文。分析使用者輸入，拆解成彼此獨立的事項，每項分類到以下五種類型之一，回傳 JSON。
 
-回傳格式（嚴格 JSON，不含其他文字）：{"items":[...]}
+══ 類型定義（依此順序判斷，遇到第一個符合的即停止）══
 
-每個 item 的結構：
-- todo: {"type":"todo","text":"...","cat":"<分類id>"}
-- todo_with_time: {"type":"todo_with_time","text":"...","cat":"<分類id>",
-    "start_year":YYYY,"start_month":MM,"start_day":N,"start_hour":N,"start_min":N,
-    "end_year":YYYY,  "end_month":MM,  "end_day":N,  "end_hour":N,  "end_min":N}
-  （若沒有明確結束時間，預設 start+1 小時；start_year/start_month 若未跨月可省略，預設當月）
-- idea: {"type":"idea","text":"..."}
-- note: {"type":"note","date_key":"YYYY-MM-DD","note_cat":"<筆記分類id>","content":"...","attachment_indices":[i,...]}
-- recap: {"type":"recap","title":"...","description":"..."}
-特別說明：
-- todo 代表未指定時間的事項，例如「找個時間去買蘋果」
-- todo_with_time 代表有明確時間的事項
-- idea 紀錄突然非任務性、突然冒出的想法或想做的事情
-- note 紀錄各類成就、情緒、對於某件事物的評論，通常是完整句子
-- recap 代表階段性的回顧、總結或成就里程碑，包含標題與描述
-- 若使用者提供了附件清單（attachments），每個附件都會以 [i:type:name] 標示其索引（i 從 0 開始）。
-  將每個附件分配給最相關的「note」項目，於該 item 的 attachment_indices 中列出對應索引。
-  attachment_indices 僅可出現在 type=="note" 的 item 上；其他類型不可使用此欄位。
-  每個附件索引最多只能出現在一個 note 中；若一段輸入只產生一個 note，所有附件都歸於它；
-  若沒有附件或沒有 note，attachment_indices 應為空陣列。
+1. todo_with_time（行事曆）
+   判斷：有明確的日期或時間點。
+   例：明天早上十點開會、下週三去看牙醫、三點要接小孩、2/14 晚餐預約
 
-規則：
-- 只回傳 JSON，不含其他文字
-- 每個拆解出來的事項「只能對應一個 item」
-- 每個 item「只能屬於一種類型」
-- 類型僅限以下五種，且不可同時屬於多種：todo / todo_with_time / idea / note / recap
-- 特別是 todo 與 todo_with_time 必須二擇一，不可同時出現或混用
-- todo，todo_with_time，和idea的說明需刪除冗餘文字，例如"找個時間去買蘋果"應紀錄為"買蘋果"
-- 若整體無法分類，回傳 {"items":[{"type":"note","date_key":"${args.today}","content":"原文"}]}
+2. todo（待辦）
+   判斷：需要「打勾完成」的具體任務或提醒，沒有明確時間。
+   例：記得買牛奶、傳報告給同事、繳水電費、預約牙醫、回電話
+   ✗ 不是尚未承諾的想法 → 那是 idea
+   ✗ 不是已發生的事 → 那是 note
+
+3. idea（靈感）
+   判斷：尚未承諾執行的想法、抱負、靈感、創意，語氣偏「想、也許、如果…」。
+   例：想學插畫、想去義大利旅行、有個念頭想開咖啡廳、可以試試看冥想
+   ✗ 若已是明確任務（「記得」、「要」、命令語氣）→ 改用 todo
+
+4. note（筆記）
+   判斷：當下的紀錄、心情、感受、觀察，或已發生的事。
+   例：今天心情很好、剛跑完步 5 公里、讀完了《原子習慣》、今天天氣很舒服
+   ✗ 不是任務、不是靈感、只是紀錄 → 用 note
+
+5. recap（回顧）
+   判斷：階段性總結、里程碑，通常有清楚的標題與較長的描述。
+   例：這個月完成了馬拉松訓練、2024 年度學習總結
+
+══ 每個 item 的 JSON 結構 ══
+
+todo:          {"type":"todo","text":"...","cat":"<分類id>","start_year":null,"start_month":null,"start_day":null,"start_hour":null,"start_min":null,"end_year":null,"end_month":null,"end_day":null,"end_hour":null,"end_min":null,"date_key":null,"note_cat":null,"content":null,"attachment_indices":null,"title":null,"description":null}
+todo_with_time:{"type":"todo_with_time","text":"...","cat":"<分類id>","start_year":YYYY,"start_month":MM,"start_day":N,"start_hour":N,"start_min":N,"end_year":YYYY,"end_month":MM,"end_day":N,"end_hour":N,"end_min":N,"date_key":null,"note_cat":null,"content":null,"attachment_indices":null,"title":null,"description":null}
+               （無明確結束時間則預設 start+1 小時；start_year/start_month 若未跨月可省略，預設當月）
+idea:          {"type":"idea","text":"...","cat":null,"start_year":null,...所有時間與note欄位為null}
+note:          {"type":"note","date_key":"YYYY-MM-DD","note_cat":"<筆記分類id>","content":"...","attachment_indices":[...],...其餘欄位為null}
+recap:         {"type":"recap","title":"...","description":"...",...其餘欄位為null}
+
+══ 附件規則 ══
+- 附件以 [i:type:name] 標示索引（i 從 0 開始）
+- 只有 note 可使用 attachment_indices；其他類型此欄位設 null
+- 每個索引只能出現在一個 note 中；無附件或無 note 則設空陣列 []
+
+══ 全域規則 ══
+- 只回傳 JSON，格式：{"items":[...]}，不含其他文字
+- 每個獨立事項只產生一個 item，不重複，不混用類型
+- todo / todo_with_time 二擇一，不可同時出現
+- todo、todo_with_time、idea 的 text 需精簡，去除冗詞（「找個時間去買蘋果」→「買蘋果」）
+- 若完全無法分類，回傳 note，content 填入原文
 
 今天日期：${args.today}
-todo 的 cat 只能從以下分類中依語意擇一，回傳其 id（若皆不合適回傳 "undefined"）：
+todo 的 cat 只能從以下分類中依語意擇一，回傳其 id（皆不合適回傳 "undefined"）：
 ${catLines(args.todoCats)}
-note 的 note_cat 只能從以下分類中依語意擇一，回傳其 id（若皆不合適回傳 "undefined"）：
+note 的 note_cat 只能從以下分類中依語意擇一，回傳其 id（皆不合適回傳 "undefined"）：
 ${catLines(args.noteCats)}
 使用者指定允許使用的類型：${args.userSpecifiedCat || "無限定"}`;
 }

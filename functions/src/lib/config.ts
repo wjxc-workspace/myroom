@@ -6,7 +6,7 @@
  *  gpt-4o-mini on the Responses API, with `web_search` as a tool. */
 export const MODELS = {
   chat: "gpt-4o-mini",
-  classify: "gpt-4o-mini",
+  classify: "gpt-4o",
   recommend: "gpt-4o-mini",
   enrich: "gpt-4o-mini",
   eraInsight: "gpt-4o-mini",

@@ -275,7 +275,7 @@ class _RecapViewState extends State<_RecapView> {
       case _Era.past:
         final done = widget.todos.where((t) => t.isCompleted).toList();
         buf.writeln('已完成任務：${done.length} 項');
-        buf.writeln('筆記：${widget.notes.length} 頁');
+        buf.writeln('札記：${widget.notes.length} 頁');
         buf.writeln(
             '里程碑：${widget.recapItems.where((r) => r.era == _Era.past).length} 個');
         if (done.isNotEmpty) {
@@ -317,7 +317,7 @@ class _RecapViewState extends State<_RecapView> {
     switch (era) {
       case _Era.past:
         final done = widget.todos.where((t) => t.isCompleted).length;
-        return '完成 $done 項 · ${widget.notes.length} 頁筆記';
+        return '完成 $done 項 · ${widget.notes.length} 頁札記';
       case _Era.now:
         final active = widget.todos.where((t) => !t.isCompleted).length;
         return '$active 項待辦 · ${_upcomingEvents().length} 個行程';
@@ -675,7 +675,7 @@ class _EraPage extends StatelessWidget {
       children: [
         _StatsRow(color: c, chips: [
           _StatData('${done.length}', '已完成\n任務'),
-          _StatData('${noteList.length}', '筆記\n頁數'),
+          _StatData('${noteList.length}', '札記\n頁數'),
           _StatData('${recapItems.length}', '達成\n里程碑'),
         ]),
         if (done.isNotEmpty) ...[
@@ -692,7 +692,7 @@ class _EraPage extends StatelessWidget {
         ],
         if (noteList.isNotEmpty) ...[
           const SizedBox(height: 18),
-          _SectionTitle(label: '近期筆記', color: c),
+          _SectionTitle(label: '近期札記', color: c),
           const SizedBox(height: 8),
           ...noteList.take(2).map((n) => _NoteCard(note: n)),
         ],

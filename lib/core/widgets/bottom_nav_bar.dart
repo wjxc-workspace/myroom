@@ -20,6 +20,7 @@ class BottomNavBar extends StatelessWidget {
     (icon: LucideIcons.squareCheck, label: '待辦'),
     (icon: LucideIcons.lightbulb, label: '靈感'),
     (icon: LucideIcons.fileText, label: '札記'),
+    (icon: LucideIcons.scrollText, label: '月誌'),
     (icon: LucideIcons.award, label: '成就'),
   ];
 

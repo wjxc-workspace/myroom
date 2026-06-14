@@ -30,6 +30,7 @@ dependencies:
   flutter_timezone: ^3.0.1   # device IANA tz → settings/app.tz patch (Auth.md §3)
 
   # ── UI / media ─────────────────────────────────────────────────────────────
+  flutter_markdown: ^0.7.3
   google_fonts: ^8.0.2
   lucide_icons_flutter: ^3.1.13
   url_launcher: ^6.3.1

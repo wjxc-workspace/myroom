@@ -28,7 +28,7 @@ class AppScaffold extends StatefulWidget {
 }
 
 class _AppScaffoldState extends State<AppScaffold> {
-  static const _pageTitles = ['行事曆', '待辦', '靈感', '札記', '成就'];
+  static const _pageTitles = ['行事曆', '待辦', '靈感', '札記', '月誌', '成就'];
 
   bool _tzChecked = false;
   bool _tutorialDismissed = false;
@@ -110,13 +110,29 @@ class _AppScaffoldState extends State<AppScaffold> {
       padding: const EdgeInsets.fromLTRB(22, 8, 22, 12),
       child: Row(
         children: [
-          MrIconButton(
-            icon: LucideIcons.plus,
-            bg: AppColors.dark,
-            iconColor: Colors.white,
-            showBorder: false,
-            borderRadius: 13,
+          GestureDetector(
             onTap: () => context.push(Routes.add),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.dark,
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.plus,
+                      size: 14, color: Colors.white),
+                  const SizedBox(width: 5),
+                  Text('隨手記',
+                      style: AppText.body(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: Colors.white)),
+                ],
+              ),
+            ),
           ),
           const Spacer(),
           Text('myroom',

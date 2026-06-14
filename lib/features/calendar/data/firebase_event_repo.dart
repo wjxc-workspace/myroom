@@ -6,6 +6,7 @@ import '../../../core/firebase_failure.dart';
 import '../../../core/result.dart';
 import '../domain/event.dart';
 import '../domain/event_repo.dart';
+import '../domain/pending_event.dart';
 
 class FirebaseEventRepo implements EventRepo {
   FirebaseEventRepo(this._db, this._uid);
@@ -62,6 +63,27 @@ class FirebaseEventRepo implements EventRepo {
   Future<Result<void>> delete(String id) async {
     try {
       await _col.doc(id).delete();
+      return const Ok(null);
+    } catch (e) {
+      final f = mapFirebase(e);
+      AppErrors.present(f);
+      return Err(f);
+    }
+  }
+
+  CollectionReference<Map<String, dynamic>> get _pendingCol =>
+      _db.collection('users').doc(_uid).collection('pending_events');
+
+  @override
+  Stream<List<PendingEvent>> watchPendingEvents() => _pendingCol
+      .orderBy('createdAt')
+      .snapshots()
+      .map((s) => s.docs.map(PendingEvent.fromFirestore).toList());
+
+  @override
+  Future<Result<void>> deletePendingEvent(String id) async {
+    try {
+      await _pendingCol.doc(id).delete();
       return const Ok(null);
     } catch (e) {
       final f = mapFirebase(e);

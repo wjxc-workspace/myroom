@@ -218,7 +218,7 @@ async function addEvent(ctx: ToolContext, a: Args): Promise<string> {
         tz
       )
     : new Date(start.getTime() + 60 * 60 * 1000);
-  await db.collection(`users/${uid}/events`).add({
+  await db.collection(`users/${uid}/pending_events`).add({
     title: str(a.title),
     description: a.description != null ? str(a.description) : null,
     location: a.location != null ? str(a.location) : null,
@@ -228,7 +228,7 @@ async function addEvent(ctx: ToolContext, a: Args): Promise<string> {
     color: SAGE,
     createdAt: FieldValue.serverTimestamp(),
   });
-  return `已新增行程：${clip(str(a.title))}`;
+  return `已建議新增行程「${clip(str(a.title))}」，等待使用者確認`;
 }
 
 async function addTodo(ctx: ToolContext, a: Args): Promise<string> {

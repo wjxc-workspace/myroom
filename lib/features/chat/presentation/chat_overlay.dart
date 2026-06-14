@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/app_errors.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../features/calendar/domain/event_repo.dart';
+import '../../../features/calendar/domain/pending_event.dart';
 import '../../../shared/ai/domain/ai_service.dart';
 import '../domain/chat_message.dart';
 import '../domain/chat_repo.dart';
@@ -26,7 +29,15 @@ class ChatOverlay extends StatelessWidget {
         AppErrors.present(e);
         return const <ChatMessage>[];
       },
-      child: const _ChatView(),
+      child: StreamProvider<List<PendingEvent>>(
+        create: (c) => c.read<EventRepo>().watchPendingEvents(),
+        initialData: const [],
+        catchError: (c, e) {
+          AppErrors.present(e);
+          return const <PendingEvent>[];
+        },
+        child: const _ChatView(),
+      ),
     );
   }
 }
@@ -92,6 +103,16 @@ class _ChatViewState extends State<_ChatView> {
     });
   }
 
+  Future<void> _confirmEvent(PendingEvent pending) async {
+    final repo = context.read<EventRepo>();
+    await repo.add(pending.toCalendarEvent());
+    await repo.deletePendingEvent(pending.id);
+  }
+
+  Future<void> _cancelEvent(PendingEvent pending) async {
+    await context.read<EventRepo>().deletePendingEvent(pending.id);
+  }
+
   /// Sends the message through the `chat` Cloud Function. The function appends
   /// the user turn (shown immediately via the stream) and the assistant reply;
   /// while we await, a typing indicator shows and the input is disabled.
@@ -108,6 +129,7 @@ class _ChatViewState extends State<_ChatView> {
   @override
   Widget build(BuildContext context) {
     final streamed = context.watch<List<ChatMessage>>();
+    final pendingEvents = context.watch<List<PendingEvent>>();
     // Accumulate the live window into the id map (append-only → safe to merge).
     for (final m in streamed) {
       _byId[m.id] = m;
@@ -179,16 +201,20 @@ class _ChatViewState extends State<_ChatView> {
 
             // Messages
             Expanded(
-              child: messages.isEmpty && !_sending
+              child: messages.isEmpty && pendingEvents.isEmpty && !_sending
                   ? const _EmptyState()
                   : Builder(builder: (context) {
                       // index 0 = load-more control (only when older history may
-                      // exist); then the messages; then the typing bubble.
+                      // exist); then the messages; then pending-event cards; then
+                      // the typing bubble.
                       final lead = _hasMore ? 1 : 0;
                       return ListView.builder(
                         controller: _scrollCtrl,
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                        itemCount: lead + messages.length + (_sending ? 1 : 0),
+                        itemCount: lead +
+                            messages.length +
+                            pendingEvents.length +
+                            (_sending ? 1 : 0),
                         itemBuilder: (_, idx) {
                           if (lead == 1 && idx == 0) {
                             return _LoadMore(
@@ -197,9 +223,19 @@ class _ChatViewState extends State<_ChatView> {
                             );
                           }
                           final i = idx - lead;
-                          return i < messages.length
-                              ? _Bubble(message: messages[i])
-                              : const _TypingBubble();
+                          if (i < messages.length) {
+                            return _Bubble(message: messages[i]);
+                          }
+                          final pi = i - messages.length;
+                          if (pi < pendingEvents.length) {
+                            final e = pendingEvents[pi];
+                            return _PendingEventCard(
+                              event: e,
+                              onConfirm: () => _confirmEvent(e),
+                              onCancel: () => _cancelEvent(e),
+                            );
+                          }
+                          return const _TypingBubble();
                         },
                       );
                     }),
@@ -424,13 +460,194 @@ class _Bubble extends StatelessWidget {
                 ),
                 boxShadow: const [kCardShadow],
               ),
-              child: Text(
-                message.content,
-                style: AppText.body(
-                  size: 13,
-                  color: isUser ? Colors.white : AppColors.dark,
-                  height: 1.65,
+              child: isUser
+                  ? Text(
+                      message.content,
+                      style: AppText.body(
+                          size: 13, color: Colors.white, height: 1.65),
+                    )
+                  : MarkdownBody(
+                      data: message.content,
+                      softLineBreak: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: AppText.body(
+                            size: 13, color: AppColors.dark, height: 1.65),
+                        strong: AppText.body(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: AppColors.dark,
+                            height: 1.65),
+                        em: AppText.body(
+                                size: 13, color: AppColors.dark, height: 1.65)
+                            .copyWith(fontStyle: FontStyle.italic),
+                        listBullet: AppText.body(
+                            size: 13, color: AppColors.dark, height: 1.65),
+                        h1: AppText.body(
+                            size: 18,
+                            weight: FontWeight.w700,
+                            color: AppColors.dark),
+                        h2: AppText.body(
+                            size: 16,
+                            weight: FontWeight.w600,
+                            color: AppColors.dark),
+                        h3: AppText.body(
+                            size: 14,
+                            weight: FontWeight.w600,
+                            color: AppColors.dark),
+                        code: AppText.body(size: 12, color: AppColors.dark)
+                            .copyWith(backgroundColor: AppColors.border),
+                        blockSpacing: 8,
+                        listIndent: 20,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingEventCard extends StatefulWidget {
+  const _PendingEventCard({
+    required this.event,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  final PendingEvent event;
+  final Future<void> Function() onConfirm;
+  final Future<void> Function() onCancel;
+
+  @override
+  State<_PendingEventCard> createState() => _PendingEventCardState();
+}
+
+class _PendingEventCardState extends State<_PendingEventCard> {
+  bool _busy = false;
+
+  Future<void> _handle(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await action();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  String _fmt(DateTime dt) =>
+      '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}  '
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.event;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.85,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  topRight: Radius.circular(18),
+                  bottomLeft: Radius.circular(4),
+                  bottomRight: Radius.circular(18),
                 ),
+                border: Border.all(color: AppColors.border),
+                boxShadow: const [kCardShadow],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.calendar,
+                          size: 13, color: AppColors.muted),
+                      const SizedBox(width: 5),
+                      Text('建議新增行程',
+                          style: AppText.caption(
+                              size: 11, color: AppColors.muted)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(e.title,
+                      style: AppText.body(
+                          size: 14, weight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_fmt(e.startTime)}  —  ${_fmt(e.endTime)}',
+                    style:
+                        AppText.caption(size: 12, color: AppColors.muted),
+                  ),
+                  if (e.location != null && e.location!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(e.location!,
+                        style: AppText.caption(
+                            size: 12, color: AppColors.muted)),
+                  ],
+                  if (e.description != null &&
+                      e.description!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(e.description!,
+                        style: AppText.caption(
+                            size: 12, color: AppColors.muted)),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: _busy
+                        ? [
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.muted),
+                            ),
+                          ]
+                        : [
+                            GestureDetector(
+                              onTap: () => _handle(widget.onCancel),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 7),
+                                decoration: BoxDecoration(
+                                  border:
+                                      Border.all(color: AppColors.border),
+                                  borderRadius:
+                                      BorderRadius.circular(10),
+                                ),
+                                child: Text('取消',
+                                    style: AppText.caption(size: 13)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => _handle(widget.onConfirm),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: AppColors.dark,
+                                  borderRadius:
+                                      BorderRadius.circular(10),
+                                ),
+                                child: Text('確認新增',
+                                    style: AppText.caption(
+                                        size: 13,
+                                        color: Colors.white)),
+                              ),
+                            ),
+                          ],
+                  ),
+                ],
               ),
             ),
           ),

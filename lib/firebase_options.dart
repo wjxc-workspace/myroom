@@ -36,22 +36,21 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBS5QD8VXMkBJDxXW5pCX5d6-f6IdCmJEU',
-    appId: '1:787435572031:web:d5b26d5a39a52a56f0618a',
-    messagingSenderId: '787435572031',
-    projectId: 'myroom-da81b',
-    authDomain: 'myroom-da81b.firebaseapp.com',
-    storageBucket: 'myroom-da81b.firebasestorage.app',
+    apiKey: 'AIzaSyB7GEEHmTjpK6IY1hJYW2sS6EFCo732ehU',
+    appId: '1:291782873:web:308c5c1d4e52a9ba7fbec8',
+    messagingSenderId: '291782873',
+    projectId: 'myroom-ruby',
+    authDomain: 'myroom-ruby.firebaseapp.com',
+    storageBucket: 'myroom-ruby.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAX_jLDlIfW7WC_e8bd0PuL3GuhpmmcflE',
-    appId: '1:787435572031:android:71faa853e5c203c3f0618a',
-    messagingSenderId: '787435572031',
-    projectId: 'myroom-da81b',
-    storageBucket: 'myroom-da81b.firebasestorage.app',
+    apiKey: 'AIzaSyAxQovqJDOaeSo95rn3vJhzSzq3Lk3f5G0',
+    appId: '1:291782873:android:9ad8f4d1dc4222e57fbec8',
+    messagingSenderId: '291782873',
+    projectId: 'myroom-ruby',
+    storageBucket: 'myroom-ruby.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAJZHyu0JM4ZEu3aVmlbzE81qdtNkoNvb0',
     appId: '1:787435572031:ios:e8d818c79337bc57f0618a',

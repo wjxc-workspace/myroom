@@ -264,7 +264,7 @@ class _NoteSheetState extends State<_NoteSheet> {
               ),
               const SizedBox(height: 20),
               Text(
-                '新增筆記',
+                '新增札記',
                 style: AppText.body(
                     size: 16, weight: FontWeight.w600, color: AppColors.dark),
               ),
@@ -329,7 +329,7 @@ class _NoteSheetState extends State<_NoteSheet> {
                 minLines: 3,
                 autofocus: true,
                 decoration: InputDecoration(
-                  hintText: '在這裡寫下這則筆記...',
+                  hintText: '在這裡寫下這則札記...',
                   hintStyle: AppText.body(color: AppColors.muted),
                   filled: true,
                   fillColor: AppColors.bg,
@@ -381,7 +381,7 @@ class _NoteSheetState extends State<_NoteSheet> {
                         ),
                         child: Center(
                           child: Text(
-                            '儲存筆記',
+                            '儲存札記',
                             style: AppText.body(
                                 size: 15,
                                 weight: FontWeight.w600,

@@ -572,7 +572,7 @@ class _NotesViewState extends State<_NotesView> {
           style: AppText.body(size: 16, weight: FontWeight.w600),
         ),
         content: Text(
-          '確定刪除「${cat.label}」？\n\n此分類下的筆記會移回「無分類」。',
+          '確定刪除「${cat.label}」？\n\n此分類下的札記會移回「無分類」。',
           style: AppText.body(size: 14),
         ),
         actions: [
@@ -689,7 +689,7 @@ class _DayPanel extends StatelessWidget {
                 const Icon(LucideIcons.plus, size: 15, color: Colors.white),
                 const SizedBox(width: 6),
                 Text(
-                  '新增 $month月$day日 的筆記',
+                  '新增 $month月$day日 的札記',
                   style: AppText.body(
                     size: 14,
                     weight: FontWeight.w600,
@@ -857,7 +857,7 @@ class _CatDetail extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '新增筆記',
+                        '新增札記',
                         style: AppText.body(
                           size: 14,
                           weight: FontWeight.w600,
@@ -888,7 +888,7 @@ class _CatCount extends StatelessWidget {
       stream: context.read<NoteRepo>().watchNotesByCategory(catId),
       builder: (context, snap) {
         final count = snap.data?.length ?? 0;
-        return Text('$count 則筆記', style: AppText.caption(size: 11));
+        return Text('$count 則札記', style: AppText.caption(size: 11));
       },
     );
   }
@@ -921,10 +921,10 @@ class _NoteCardState extends State<_NoteCard> {
         backgroundColor: AppColors.bg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          '刪除筆記',
+          '刪除札記',
           style: AppText.body(size: 16, weight: FontWeight.w600),
         ),
-        content: Text('確定刪除這份筆記？', style: AppText.body(size: 14)),
+        content: Text('確定刪除這份札記？', style: AppText.body(size: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

@@ -9,6 +9,7 @@ class Routes {
   static const todo = '/todo';
   static const ideas = '/ideas';
   static const notes = '/notes';
+  static const monthly = '/monthly';
   static const recap = '/recap';
 
   // Pushed over the shell

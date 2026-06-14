@@ -8,6 +8,7 @@ import '../features/auth/presentation/login_page.dart';
 import '../features/calendar/presentation/calendar_page.dart';
 import '../features/chat/presentation/chat_overlay.dart';
 import '../features/ideas/presentation/ideas_page.dart';
+import '../features/monthly/presentation/monthly_page.dart';
 import '../features/notes/presentation/notes_page.dart';
 import '../features/recap/presentation/recap_page.dart';
 import '../features/settings/presentation/settings_page.dart';
@@ -65,6 +66,11 @@ GoRouter buildRouter(AuthRepo authRepo) {
               StatefulShellBranch(routes: [
                 GoRoute(
                     path: Routes.notes, builder: (_, __) => const NotesPage()),
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(
+                    path: Routes.monthly,
+                    builder: (_, __) => const MonthlyPage()),
               ]),
               StatefulShellBranch(routes: [
                 GoRoute(

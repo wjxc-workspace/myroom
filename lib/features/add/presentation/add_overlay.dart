@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File, Platform;
 import 'dart:typed_data';
@@ -31,10 +32,26 @@ import '../../todo/domain/todo.dart';
 import '../../todo/domain/todo_category.dart';
 import '../../todo/domain/todo_repo.dart';
 
-/// Smart Add overlay (AI_proxy.md §5, Storage.md §4). Collects free text +
-/// attachments, classifies them through `classifyMultiInput` (audio is
-/// transcribed and PDF/text extracted first), then writes each resulting item to
-/// the matching repo — routing any attachments to their note.
+class _CatMeta {
+  final String key;
+  final String label;
+  final IconData icon;
+  final Color color;
+  const _CatMeta(this.key, this.label, this.icon, this.color);
+}
+
+const _kBaseCats = <_CatMeta>[
+  _CatMeta('calendar', '行事曆', LucideIcons.calendar, AppColors.sage),
+  _CatMeta('todo', '待辦', LucideIcons.check, AppColors.blue),
+  _CatMeta('idea', '靈感', LucideIcons.lightbulb, AppColors.amber),
+  _CatMeta('note', '札記', LucideIcons.fileText, AppColors.rose),
+];
+const _kRecapCat =
+    _CatMeta('recap', '回顧', LucideIcons.bookOpen, AppColors.muted);
+
+/// Smart Add overlay — collects free text + attachments, auto-detects category
+/// via AI (step 1), lets the user confirm / adjust category buttons (step 2),
+/// then writes to the matching repo (step 3).
 class AddOverlay extends StatefulWidget {
   const AddOverlay({super.key});
 
@@ -49,19 +66,83 @@ class _AddOverlayState extends State<AddOverlay> {
   String? _recordingPath;
   bool _recording = false;
   bool _processing = false;
+  bool _detecting = false;
   String _status = '';
+  Timer? _debounceTimer;
+  int _detectGen = 0; // incremented on each trigger; stale results are discarded
 
-  // Mirrors the note editor: attachment capture is native-only (Phase 1).
+  // Detection results & user overrides
+  List<ClassificationItem>? _detectedItems;
+  final Set<String> _selectedMainCats = {};
+  String _todoCatId = kUndefinedCategoryId;
+  String _noteCatId = kUndefinedCategoryId;
+
+  // Category lists (loaded once on open)
+  List<TodoCategory> _todoCats = [];
+  List<NoteCategory> _noteCats = [];
+  bool _catsLoaded = false;
+
   bool get _attachmentsEnabled => !kIsWeb;
+  bool get _busy => _detecting || _processing;
+
+  @override
+  void initState() {
+    super.initState();
+    _textCtrl.addListener(_onTextChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_catsLoaded) {
+      _catsLoaded = true;
+      _loadCategories();
+    }
+  }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
+    _textCtrl.removeListener(_onTextChanged);
     _textCtrl.dispose();
     _recorder.dispose();
     super.dispose();
   }
 
-  // ── Attachment picking / recording (parity with the note editor) ──────────
+  void _onTextChanged() {
+    // Clear stale detection whenever text changes.
+    if (_detectedItems != null) {
+      setState(() {
+        _detectedItems = null;
+        _selectedMainCats.clear();
+      });
+    }
+    // Invalidate any in-flight detection by bumping the generation counter.
+    _detectGen++;
+    _debounceTimer?.cancel();
+    final text = _textCtrl.text.trim();
+    if (text.isEmpty) {
+      if (_detecting) setState(() => _detecting = false);
+      return;
+    }
+    _debounceTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted && !_processing) _detect();
+    });
+  }
+
+  Future<void> _loadCategories() async {
+    final todoRepo = context.read<TodoRepo>();
+    final noteRepo = context.read<NoteRepo>();
+    final todoCats = await todoRepo.watchTodoCategories().first;
+    final noteCats = await noteRepo.watchNoteCategories().first;
+    if (!mounted) return;
+    setState(() {
+      _todoCats = todoCats;
+      _noteCats = noteCats;
+    });
+  }
+
+  // ── Attachment picking / recording ─────────────────────────────────────────
 
   Future<void> _pickFile() async {
     final result = await FilePicker.pickFiles(
@@ -143,7 +224,8 @@ class _AddOverlayState extends State<AddOverlay> {
       if (!status.isGranted) return;
     }
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final path =
+        '${dir.path}/rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
     _recordingPath = path;
     await _recorder.start(const RecordConfig(), path: path);
     if (mounted) setState(() => _recording = true);
@@ -172,35 +254,30 @@ class _AddOverlayState extends State<AddOverlay> {
         )));
   }
 
-  // ── Smart Add submission ──────────────────────────────────────────────────
+  // ── Step 1: AI category detection ─────────────────────────────────────────
 
-  Future<void> _submit() async {
+  Future<void> _detect() async {
     final text = _textCtrl.text.trim();
     if ((text.isEmpty && _attachments.isEmpty) || _processing) return;
-    FocusScope.of(context).unfocus();
+    // Don't unfocus — the user may still be typing.
 
-    // Capture everything that depends on `context` before any async gap.
     final ai = context.read<AiService>();
-    final todoRepo = context.read<TodoRepo>();
-    final eventRepo = context.read<EventRepo>();
-    final ideaRepo = context.read<IdeaRepo>();
-    final noteRepo = context.read<NoteRepo>();
-    final recapRepo = context.read<RecapRepo>();
-    final navigator = Navigator.of(context);
+    final gen = ++_detectGen; // snapshot generation before any await
 
     setState(() {
-      _processing = true;
-      _status = '整理中…';
+      _detecting = true;
+      _detectedItems = null;
+      _selectedMainCats.clear();
+      _status = '偵測中…';
     });
 
-    // 1. Transcribe any audio that has no transcript yet.
+    // Transcribe any un-transcribed audio first.
     for (int i = 0; i < _attachments.length; i++) {
       final a = _attachments[i];
       if (a.type == 'audio' &&
           (a.extractedText == null || a.extractedText!.isEmpty)) {
         if (mounted) setState(() => _status = '轉錄語音中…');
-        final r =
-            await ai.transcribe(audioBytes: a.bytes, filename: a.filename);
+        final r = await ai.transcribe(audioBytes: a.bytes, filename: a.filename);
         if (r is Ok<String>) {
           _attachments[i] = PendingAttachment(
             type: a.type,
@@ -213,8 +290,7 @@ class _AddOverlayState extends State<AddOverlay> {
       }
     }
 
-    // 2. Build the classification inputs: base64 images, concatenated extracted
-    //    text (audio/file), and an attachment manifest with absolute indices.
+    // Build classification payload.
     final images = <String>[];
     final fileTextParts = <String>[];
     final manifest = <AiAttachmentRef>[];
@@ -235,78 +311,170 @@ class _AddOverlayState extends State<AddOverlay> {
       fileText: fileTextParts.join('\n\n'),
       attachments: manifest,
     );
-    if (!mounted) return;
+
+    // Discard result if the user has already typed new text (gen mismatch).
+    if (!mounted || gen != _detectGen) return;
+
     if (result is! Ok<List<ClassificationItem>>) {
       setState(() {
-        _processing = false;
+        _detecting = false;
         _status = '';
       });
-      return; // error already surfaced by AiService
+      return;
     }
+
     final items = result.value;
     if (items.isEmpty) {
       setState(() {
-        _processing = false;
+        _detecting = false;
         _status = '';
       });
       _toast('AI 沒有辨識出可新增的項目');
       return;
     }
 
-    // 3. Resolve categories once (ids → denormalized snapshots).
-    if (mounted) setState(() => _status = '寫入中…');
-    final todoCats = await todoRepo.watchTodoCategories().first;
-    final noteCats = await noteRepo.watchNoteCategories().first;
-
-    // 4. Write each item to its repo, routing attachments to notes.
-    int count = 0;
+    // Extract detected categories and default sub-cat IDs.
+    final detected = <String>{};
+    String todoCatId = kUndefinedCategoryId;
+    String noteCatId = kUndefinedCategoryId;
     for (final item in items) {
       switch (item) {
         case ClassifiedTodo t:
-          await todoRepo.add(Todo(
-            id: '',
-            title: t.text,
-            category: _todoRef(t.catId, todoCats),
-          ));
-          count++;
-        case ClassifiedTodoWithTime tt:
-          await eventRepo.add(CalendarEvent(
-            id: '',
-            title: tt.text,
-            startTime: tt.start,
-            endTime: tt.end,
-            color: AppColors.sage,
-            createdAt: DateTime.now(),
-          ));
-          count++;
-        case ClassifiedIdea idea:
-          await ideaRepo.add(idea.text);
-          count++;
-        case ClassifiedNote note:
-          final routed = note.attachmentIndices
-              .where((i) => i >= 0 && i < _attachments.length)
-              .map((i) => _attachments[i])
-              .toList();
-          await noteRepo.add(
-            Note(
+          detected.add('todo');
+          todoCatId = t.catId;
+        case ClassifiedTodoWithTime _:
+          detected.add('calendar');
+        case ClassifiedIdea _:
+          detected.add('idea');
+        case ClassifiedNote n:
+          detected.add('note');
+          noteCatId = n.noteCatId;
+        case ClassifiedRecap _:
+          detected.add('recap');
+      }
+    }
+
+    setState(() {
+      _detecting = false;
+      _status = '';
+      _detectedItems = items;
+      _selectedMainCats
+        ..clear()
+        ..addAll(detected);
+      _todoCatId = todoCatId;
+      _noteCatId = noteCatId;
+    });
+  }
+
+  // ── Step 2: Confirm and save ───────────────────────────────────────────────
+
+  Future<void> _submit() async {
+    if (_detectedItems == null || _processing) return;
+    if (_selectedMainCats.isEmpty) {
+      _toast('請至少選擇一個類別');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+
+    final todoRepo = context.read<TodoRepo>();
+    final eventRepo = context.read<EventRepo>();
+    final ideaRepo = context.read<IdeaRepo>();
+    final noteRepo = context.read<NoteRepo>();
+    final recapRepo = context.read<RecapRepo>();
+    final navigator = Navigator.of(context);
+
+    setState(() {
+      _processing = true;
+      _status = '寫入中…';
+    });
+
+    int count = 0;
+    for (final cat in _selectedMainCats) {
+      final forCat =
+          _detectedItems!.where((i) => _itemCatKey(i) == cat).toList();
+
+      if (forCat.isNotEmpty) {
+        // Save AI-detected items, applying the user's sub-cat override.
+        for (final item in forCat) {
+          switch (item) {
+            case ClassifiedTodo t:
+              await todoRepo.add(Todo(
+                id: '',
+                title: t.text,
+                category: _todoRef(_todoCatId, _todoCats),
+              ));
+              count++;
+            case ClassifiedTodoWithTime tt:
+              await eventRepo.add(CalendarEvent(
+                id: '',
+                title: tt.text,
+                startTime: tt.start,
+                endTime: tt.end,
+                color: AppColors.sage,
+                createdAt: DateTime.now(),
+              ));
+              count++;
+            case ClassifiedIdea idea:
+              await ideaRepo.add(idea.text);
+              count++;
+            case ClassifiedNote note:
+              final routed = note.attachmentIndices
+                  .where((i) => i >= 0 && i < _attachments.length)
+                  .map((i) => _attachments[i])
+                  .toList();
+              await noteRepo.add(
+                Note(
+                  id: '',
+                  dateKey: note.dateKey,
+                  content: note.content,
+                  category: _noteRef(_noteCatId, _noteCats),
+                  createdAt: DateTime.now(),
+                  updatedAt: DateTime.now(),
+                ),
+                attachments: routed,
+              );
+              count++;
+            case ClassifiedRecap r:
+              await recapRepo.add(Recap(
+                id: '',
+                title: r.title.isEmpty ? '回顧' : r.title,
+                content: r.description,
+                createdAt: DateTime.now(),
+              ));
+              count++;
+          }
+        }
+      } else {
+        // User manually enabled a category the AI didn't detect — create a
+        // basic item from the raw input text.
+        final rawText = _textCtrl.text.trim();
+        if (rawText.isEmpty) continue;
+        switch (cat) {
+          case 'todo':
+            await todoRepo.add(Todo(
               id: '',
-              dateKey: note.dateKey,
-              content: note.content,
-              category: _noteRef(note.noteCatId, noteCats),
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-            attachments: routed,
-          );
-          count++;
-        case ClassifiedRecap r:
-          await recapRepo.add(Recap(
-            id: '',
-            title: r.title.isEmpty ? '回顧' : r.title,
-            content: r.description,
-            createdAt: DateTime.now(),
-          ));
-          count++;
+              title: rawText,
+              category: _todoRef(_todoCatId, _todoCats),
+            ));
+            count++;
+          case 'idea':
+            await ideaRepo.add(rawText);
+            count++;
+          case 'note':
+            await noteRepo.add(
+              Note(
+                id: '',
+                dateKey: _todayKey(),
+                content: rawText,
+                category: _noteRef(_noteCatId, _noteCats),
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+              ),
+              attachments: _attachments.toList(),
+            );
+            count++;
+          // 'calendar' and 'recap' require structured data; skip if not detected.
+        }
       }
     }
 
@@ -315,11 +483,27 @@ class _AddOverlayState extends State<AddOverlay> {
     scaffoldMessengerKey.currentState
       ?..clearSnackBars()
       ..showSnackBar(SnackBar(
-        content: Text('已透過 AI 新增 $count 個項目',
+        content: Text('已新增 $count 個項目',
             style: AppText.body(size: 13, color: Colors.white)),
         backgroundColor: AppColors.dark,
         behavior: SnackBarBehavior.floating,
       ));
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  String _itemCatKey(ClassificationItem item) => switch (item) {
+        ClassifiedTodoWithTime() => 'calendar',
+        ClassifiedTodo() => 'todo',
+        ClassifiedIdea() => 'idea',
+        ClassifiedNote() => 'note',
+        ClassifiedRecap() => 'recap',
+      };
+
+  String _todayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}'
+        '-${now.day.toString().padLeft(2, '0')}';
   }
 
   TodoCategoryRef _todoRef(String id, List<TodoCategory> cats) {
@@ -342,7 +526,6 @@ class _AddOverlayState extends State<AddOverlay> {
   }
 
   void _toast(String msg) {
-    // Routed through the global messenger so it works across async gaps.
     scaffoldMessengerKey.currentState
       ?..clearSnackBars()
       ..showSnackBar(SnackBar(
@@ -352,7 +535,7 @@ class _AddOverlayState extends State<AddOverlay> {
       ));
   }
 
-  // ── UI ────────────────────────────────────────────────────────────────────
+  // ── UI ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -361,6 +544,7 @@ class _AddOverlayState extends State<AddOverlay> {
       body: SafeArea(
         child: Column(
           children: [
+            // Title bar
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 8, 22, 12),
               child: Row(
@@ -368,18 +552,19 @@ class _AddOverlayState extends State<AddOverlay> {
                   MrIconButton(
                     icon: LucideIcons.x,
                     iconSize: 17,
-                    onTap: _processing
-                        ? () {}
-                        : () => Navigator.of(context).pop(),
+                    onTap: _busy ? () {} : () => Navigator.of(context).pop(),
                   ),
                   const Spacer(),
-                  Text('新增',
-                      style: AppText.display(size: 23, weight: FontWeight.w400)),
+                  Text('隨手記',
+                      style:
+                          AppText.display(size: 23, weight: FontWeight.w400)),
                   const Spacer(),
                   const SizedBox(width: 36),
                 ],
               ),
             ),
+
+            // Scrollable content
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -400,10 +585,12 @@ class _AddOverlayState extends State<AddOverlay> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '行程、待辦、靈感、筆記或回顧都可以混在一起。',
+                      '行程、待辦、靈感、札記或回顧都可以混在一起。',
                       style: AppText.caption(size: 11, color: AppColors.muted),
                     ),
                     const SizedBox(height: 14),
+
+                    // Text input
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -411,8 +598,8 @@ class _AddOverlayState extends State<AddOverlay> {
                         border: Border.all(color: AppColors.border),
                         boxShadow: const [kCardShadow],
                       ),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
                       child: TextField(
                         controller: _textCtrl,
                         maxLines: 8,
@@ -430,6 +617,8 @@ class _AddOverlayState extends State<AddOverlay> {
                         style: AppText.body(size: 14, height: 1.6),
                       ),
                     ),
+
+                    // Attachments
                     if (_attachmentsEnabled && _attachments.isNotEmpty) ...[
                       const SizedBox(height: 14),
                       Text('附件',
@@ -445,90 +634,303 @@ class _AddOverlayState extends State<AddOverlay> {
                           for (final a in _attachments)
                             _attachmentChip(
                                 a,
-                                _processing
+                                _busy
                                     ? null
                                     : () =>
                                         setState(() => _attachments.remove(a))),
                         ],
                       ),
                     ],
+
+                    // Recording badge
                     if (_recording) ...[
                       const SizedBox(height: 12),
                       _recordingBadge(),
                     ],
+
+                    // Category section (shown after detection)
+                    const SizedBox(height: 16),
+                    if (_detecting)
+                      _buildDetectingBadge()
+                    else if (_detectedItems != null)
+                      _buildCategorySection(),
                   ],
                 ),
               ),
             ),
+
             // Action bar
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Row(
                 children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _processing ? null : _submit,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        decoration: BoxDecoration(
-                          color: _processing
-                              ? AppColors.dark.withOpacity(0.6)
-                              : AppColors.dark,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: _processing
-                              ? Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const SizedBox(
-                                      width: 15,
-                                      height: 15,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.white),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(_status,
-                                        style: AppText.body(
-                                            size: 14, color: Colors.white)),
-                                  ],
-                                )
-                              : Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(LucideIcons.sparkles,
-                                        size: 16, color: AppColors.amber),
-                                    const SizedBox(width: 8),
-                                    Text('智慧新增',
-                                        style: AppText.body(
-                                            size: 15,
-                                            weight: FontWeight.w600,
-                                            color: Colors.white)),
-                                  ],
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: _buildPrimaryButton()),
                   if (_attachmentsEnabled) ...[
                     const SizedBox(width: 8),
                     _actionBtn(
                       icon: LucideIcons.paperclip,
-                      onTap: _processing ? null : _pickFile,
+                      onTap: _busy ? null : _pickFile,
                     ),
                     const SizedBox(width: 8),
                     _actionBtn(
-                      icon: _recording ? LucideIcons.squareSlash : LucideIcons.mic,
+                      icon: _recording
+                          ? LucideIcons.squareSlash
+                          : LucideIcons.mic,
                       iconColor: _recording ? AppColors.rose : null,
                       borderColor:
                           _recording ? AppColors.rose.withOpacity(0.4) : null,
-                      onTap: _processing ? null : _toggleRecording,
+                      onTap: _busy ? null : _toggleRecording,
                     ),
                   ],
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryButton() {
+    // Tapping submits if detection is done; falls back to manual detect otherwise.
+    void onTap() {
+      if (_processing) return;
+      if (_detectedItems != null) {
+        _submit();
+      } else if (!_detecting) {
+        _detect();
+      }
+    }
+
+    final canTap = !_processing &&
+        (_detectedItems != null || (!_detecting && _textCtrl.text.trim().isNotEmpty));
+
+    return GestureDetector(
+      onTap: canTap ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        decoration: BoxDecoration(
+          color: canTap ? AppColors.dark : AppColors.dark.withOpacity(0.45),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: _processing
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(_status,
+                        style: AppText.body(size: 14, color: Colors.white)),
+                  ],
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.check, size: 16, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      '確認新增',
+                      style: AppText.body(
+                          size: 15,
+                          weight: FontWeight.w600,
+                          color: Colors.white),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetectingBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+                strokeWidth: 1.5, color: AppColors.muted),
+          ),
+          const SizedBox(width: 8),
+          Text(_status,
+              style: AppText.body(size: 13, color: AppColors.muted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategorySection() {
+    // Show recap button only when AI detected a recap item.
+    final showRecap = _detectedItems!.any((i) => i is ClassifiedRecap);
+    final cats = [..._kBaseCats, if (showRecap) _kRecapCat];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [kCardShadow],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header
+          Row(
+            children: [
+              const Icon(LucideIcons.sparkles,
+                  size: 13, color: AppColors.amber),
+              const SizedBox(width: 5),
+              Text('偵測到的類別',
+                  style: AppText.label(
+                      size: 12,
+                      weight: FontWeight.w600,
+                      color: AppColors.dark)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _processing ? null : _detect,
+                child: Text('重新偵測',
+                    style:
+                        AppText.caption(size: 11, color: AppColors.muted)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Main category toggle buttons (multi-select)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: cats
+                .map((c) => _mainCatChip(c.key, c.label, c.icon, c.color))
+                .toList(),
+          ),
+
+          // Todo sub-categories (single-select)
+          if (_selectedMainCats.contains('todo') && _todoCats.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('待辦分類',
+                style: AppText.caption(
+                    size: 11,
+                    weight: FontWeight.w500,
+                    color: AppColors.muted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _todoCats
+                  .map((c) =>
+                      _subCatChip(c.id, c.label, c.color, isTodo: true))
+                  .toList(),
+            ),
+          ],
+
+          // Note sub-categories (single-select)
+          if (_selectedMainCats.contains('note') && _noteCats.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('札記分類',
+                style: AppText.caption(
+                    size: 11,
+                    weight: FontWeight.w500,
+                    color: AppColors.muted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _noteCats
+                  .map((c) =>
+                      _subCatChip(c.id, c.label, c.color, isTodo: false))
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _mainCatChip(
+      String key, String label, IconData icon, Color color) {
+    final selected = _selectedMainCats.contains(key);
+    return GestureDetector(
+      onTap: _processing
+          ? null
+          : () => setState(() {
+                if (selected) {
+                  _selectedMainCats.remove(key);
+                } else {
+                  _selectedMainCats.add(key);
+                }
+              }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.12) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? color : AppColors.border,
+            width: selected ? 1.5 : 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 13, color: selected ? color : AppColors.muted),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: AppText.body(
+                  size: 13,
+                  weight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? color : AppColors.muted),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 4),
+              Icon(LucideIcons.check, size: 11, color: color),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _subCatChip(String catId, String label, Color color,
+      {required bool isTodo}) {
+    final current = isTodo ? _todoCatId : _noteCatId;
+    final selected = current == catId;
+    return GestureDetector(
+      onTap: _processing
+          ? null
+          : () => setState(
+              () => isTodo ? _todoCatId = catId : _noteCatId = catId),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.12) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? color : AppColors.border),
+        ),
+        child: Text(
+          label,
+          style: AppText.caption(
+              size: 12,
+              weight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? color : AppColors.muted),
         ),
       ),
     );
@@ -618,7 +1020,8 @@ class _AddOverlayState extends State<AddOverlay> {
                 color: AppColors.rose, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
-          Text('錄音中…', style: AppText.body(size: 13, color: AppColors.rose)),
+          Text('錄音中…',
+              style: AppText.body(size: 13, color: AppColors.rose)),
         ],
       ),
     );
