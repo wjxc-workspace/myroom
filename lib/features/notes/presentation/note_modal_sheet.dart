@@ -12,13 +12,14 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
 import '../../../core/constants.dart';
+import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../domain/note.dart';
 import '../domain/note_category.dart';
+import '../domain/note_repo.dart';
+import 'note_style.dart';
 
-/// The result returned by the note editor sheet for a brand-new note. (In the
-/// Firebase port the editor only creates notes — the date/category panels
-/// supply edit affordances via separate flows.)
+/// The result returned by the note composer sheet, for both create and edit.
 class NoteSheetResult {
   /// Title; empty -> persisted as 無標題 by the page.
   final String title;
@@ -30,20 +31,31 @@ class NoteSheetResult {
   /// Freshly picked / recorded attachments to upload.
   final List<PendingAttachment> added;
 
+  /// Existing attachments the user kept (edit mode); the page diffs these
+  /// against the original to compute removals. Empty for a brand-new note.
+  final List<NoteAttachment> keptAttachments;
+
   const NoteSheetResult({
     required this.title,
     required this.content,
     required this.catId,
     required this.added,
+    this.keptAttachments = const [],
   });
 }
 
-/// Opens the shared bottom sheet used to compose a note.
+/// Opens the shared bottom sheet used to compose or edit a note.
+///
+/// Pass [note] to open in edit mode (prefilled, with removable existing
+/// attachments). Pass [repo] to enable inline category creation (a `新增分類`
+/// chip); when null the category chips are read-only from [categories].
 Future<NoteSheetResult?> showNoteModalSheet(
   BuildContext context, {
   required String dateKey,
   required List<NoteCategory> categories,
   String? initialCatId,
+  Note? note,
+  NoteRepo? repo,
 }) {
   return showModalBottomSheet<NoteSheetResult>(
     context: context,
@@ -54,6 +66,8 @@ Future<NoteSheetResult?> showNoteModalSheet(
       dateKey: dateKey,
       categories: categories,
       initialCatId: initialCatId,
+      note: note,
+      repo: repo,
     ),
   );
 }
@@ -62,11 +76,15 @@ class _NoteSheet extends StatefulWidget {
   final String dateKey;
   final List<NoteCategory> categories;
   final String? initialCatId;
+  final Note? note;
+  final NoteRepo? repo;
 
   const _NoteSheet({
     required this.dateKey,
     required this.categories,
     required this.initialCatId,
+    this.note,
+    this.repo,
   });
 
   @override
@@ -78,18 +96,24 @@ class _NoteSheetState extends State<_NoteSheet> {
   late final TextEditingController _contentCtrl;
   late String _catId;
   final List<PendingAttachment> _added = [];
+  final List<NoteAttachment> _existing = [];
   final _recorder = AudioRecorder();
   String? _recordingPath;
   bool _recording = false;
 
   bool get _attachmentsEnabled => !kIsWeb;
+  bool get _isEdit => widget.note != null;
 
   @override
   void initState() {
     super.initState();
-    _titleCtrl = TextEditingController();
-    _contentCtrl = TextEditingController();
-    _catId = widget.initialCatId ?? kUndefinedCategoryId;
+    final note = widget.note;
+    _titleCtrl = TextEditingController(
+      text: (note != null && note.title != '無標題') ? note.title : '',
+    );
+    _contentCtrl = TextEditingController(text: note?.content ?? '');
+    _catId = note?.category.id ?? widget.initialCatId ?? kUndefinedCategoryId;
+    if (note != null) _existing.addAll(note.attachments);
   }
 
   @override
@@ -224,7 +248,7 @@ class _NoteSheetState extends State<_NoteSheet> {
   void _save() {
     final title = _titleCtrl.text.trim();
     final content = _contentCtrl.text.trim();
-    if (content.isEmpty && _added.isEmpty) return;
+    if (content.isEmpty && _added.isEmpty && _existing.isEmpty) return;
     Navigator.pop(
       context,
       NoteSheetResult(
@@ -232,6 +256,7 @@ class _NoteSheetState extends State<_NoteSheet> {
         content: content,
         catId: _catId,
         added: _added,
+        keptAttachments: _existing,
       ),
     );
   }
@@ -265,7 +290,7 @@ class _NoteSheetState extends State<_NoteSheet> {
               ),
               const SizedBox(height: 20),
               Text(
-                '新增札記',
+                _isEdit ? '編輯札記' : '新增札記',
                 style: AppText.body(
                     size: 16, weight: FontWeight.w600, color: AppColors.dark),
               ),
@@ -297,26 +322,7 @@ class _NoteSheetState extends State<_NoteSheet> {
                 style: AppText.body(size: 14),
               ),
 
-              if (widget.categories.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Text('分類',
-                    style: AppText.label(
-                        size: 12,
-                        weight: FontWeight.w500,
-                        color: AppColors.dark)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: widget.categories
-                      .map((c) => _subCatChip(
-                            label: c.label,
-                            selected: _catId == c.id,
-                            onTap: () => setState(() => _catId = c.id),
-                          ))
-                      .toList(),
-                ),
-              ],
+              _buildCategorySection(),
 
               const SizedBox(height: 14),
 
@@ -343,6 +349,25 @@ class _NoteSheetState extends State<_NoteSheet> {
                 ),
                 style: AppText.body(size: 14, height: 1.6),
               ),
+
+              if (_existing.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text('現有附件',
+                    style: AppText.label(
+                        size: 12,
+                        weight: FontWeight.w500,
+                        color: AppColors.dark)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final a in _existing)
+                      _existingChip(
+                          a, () => setState(() => _existing.remove(a))),
+                  ],
+                ),
+              ],
 
               if (_attachmentsEnabled && _added.isNotEmpty) ...[
                 const SizedBox(height: 14),
@@ -382,7 +407,7 @@ class _NoteSheetState extends State<_NoteSheet> {
                         ),
                         child: Center(
                           child: Text(
-                            '儲存札記',
+                            _isEdit ? '更新札記' : '儲存札記',
                             style: AppText.body(
                                 size: 15,
                                 weight: FontWeight.w600,
@@ -440,6 +465,213 @@ class _NoteSheetState extends State<_NoteSheet> {
             color: selected ? Colors.white : AppColors.dark,
           ),
         ),
+      ),
+    );
+  }
+
+  // ── Category section (live + inline creation when a repo is supplied) ─────
+
+  Widget _buildCategorySection() {
+    final repo = widget.repo;
+    if (repo == null) {
+      if (widget.categories.isEmpty) return const SizedBox.shrink();
+      return _categoryBlock(widget.categories, allowAdd: false);
+    }
+    return StreamBuilder<List<NoteCategory>>(
+      stream: repo.watchNoteCategories(),
+      initialData: widget.categories,
+      builder: (context, snap) =>
+          _categoryBlock(snap.data ?? const <NoteCategory>[], allowAdd: true),
+    );
+  }
+
+  Widget _categoryBlock(List<NoteCategory> categories,
+      {required bool allowAdd}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 14),
+        Text('分類',
+            style: AppText.label(
+                size: 12, weight: FontWeight.w500, color: AppColors.dark)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final c in categories)
+              _subCatChip(
+                label: c.label,
+                selected: _catId == c.id,
+                onTap: () => setState(() => _catId = c.id),
+              ),
+            if (allowAdd) _addCatChip(categories),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _addCatChip(List<NoteCategory> categories) {
+    return GestureDetector(
+      onTap: () => _showAddCategoryDialog(categories),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.plus, size: 12, color: AppColors.muted),
+            const SizedBox(width: 4),
+            Text('新增分類',
+                style: AppText.caption(size: 12, color: AppColors.muted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddCategoryDialog(List<NoteCategory> categories) {
+    final repo = widget.repo;
+    if (repo == null) return;
+    final labelCtrl = TextEditingController();
+    String selectedIcon =
+        kNoteIconKeys[categories.length % kNoteIconKeys.length];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: AppColors.bg,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('新增分類',
+              style: AppText.body(size: 16, weight: FontWeight.w600)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: labelCtrl,
+                autofocus: true,
+                decoration: _dialogFieldDecoration('分類名稱'),
+                style: AppText.body(size: 14),
+              ),
+              const SizedBox(height: 14),
+              Text('選擇圖示',
+                  style: AppText.caption(size: 11, weight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: kNoteIconKeys.map((key) {
+                  final isSelected = key == selectedIcon;
+                  return GestureDetector(
+                    onTap: () => setDialog(() => selectedIcon = key),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.dark : AppColors.border,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(kNoteIconMap[key]!,
+                          size: 16,
+                          color: isSelected ? Colors.white : AppColors.muted),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('取消',
+                  style: AppText.body(size: 14, color: AppColors.muted)),
+            ),
+            TextButton(
+              onPressed: () async {
+                final label = labelCtrl.text.trim();
+                if (label.isEmpty) return;
+                Navigator.pop(ctx);
+                final idx = categories.length;
+                final color = kNoteCatPalette[idx % kNoteCatPalette.length];
+                final res = await repo.addNoteCategory(
+                  NoteCategory(
+                    id: '',
+                    label: label,
+                    iconName: selectedIcon,
+                    color: color,
+                    sortOrder: idx,
+                  ),
+                );
+                if (!mounted) return;
+                if (res case Ok(value: final id)) {
+                  setState(() => _catId = id);
+                }
+              },
+              child: Text('新增',
+                  style: AppText.body(
+                      size: 14,
+                      weight: FontWeight.w600,
+                      color: AppColors.dark)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _dialogFieldDecoration(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: AppText.body(color: AppColors.muted),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.dark),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      );
+
+  Widget _existingChip(NoteAttachment a, VoidCallback onRemove) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.border,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_iconFor(a.type), size: 13, color: AppColors.muted),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Text(
+              a.filename,
+              style: AppText.caption(size: 11, color: AppColors.dark),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(LucideIcons.x, size: 11, color: AppColors.muted),
+          ),
+        ],
       ),
     );
   }

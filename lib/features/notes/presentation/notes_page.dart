@@ -16,38 +16,9 @@ import '../domain/note_category.dart';
 import '../domain/note_repo.dart';
 import 'note_detail_page.dart';
 import 'note_modal_sheet.dart';
+import 'note_style.dart';
 
 enum NoteMode { date, category }
-
-// ─── Icon / palette constants ─────────────────────────────────────────────────
-
-const kNoteIconMap = {
-  'tag': LucideIcons.tag,
-  'star': LucideIcons.star,
-  'pencil': LucideIcons.pencil,
-  'fileText': LucideIcons.fileText,
-  'bookOpen': LucideIcons.bookOpen,
-  'music': LucideIcons.music,
-  'heart': LucideIcons.heart,
-};
-
-const kNoteIconKeys = [
-  'tag',
-  'star',
-  'pencil',
-  'fileText',
-  'bookOpen',
-  'music',
-  'heart',
-];
-
-const kNoteCatPalette = [
-  Color(0xFFBFA97A),
-  Color(0xFFBF7A8E),
-  Color(0xFF7A8EBF),
-  Color(0xFF9E9E9E),
-  Color(0xFF7BAF8A),
-];
 
 // ─── NotesPage ────────────────────────────────────────────────────────────────
 
@@ -624,9 +595,12 @@ class _DayPanel extends StatelessWidget {
       context,
       dateKey: dateKey,
       categories: categories,
+      repo: repo,
     );
     if (result == null) return;
-    final cat = categories.firstWhere(
+    if (!context.mounted) return;
+    // Re-read categories — the user may have created one inline in the sheet.
+    final cat = context.read<List<NoteCategory>>().firstWhere(
       (c) => c.id == result.catId,
       orElse: () => NoteCategory.undefined,
     );
@@ -790,7 +764,7 @@ class _CatIconBadge extends StatelessWidget {
   }
 }
 
-class _CatDetail extends StatelessWidget {
+class _CatDetail extends StatefulWidget {
   final NoteCategory category;
   final List<NoteCategory> categories;
   final VoidCallback onBack;
@@ -801,16 +775,25 @@ class _CatDetail extends StatelessWidget {
     required this.onBack,
   });
 
+  @override
+  State<_CatDetail> createState() => _CatDetailState();
+}
+
+class _CatDetailState extends State<_CatDetail> {
+  bool _filterActive = false;
+  DateTime? _from;
+  DateTime? _to;
+
   Future<void> _openAddSheet(BuildContext context) async {
     final repo = context.read<NoteRepo>();
     final result = await showNoteModalSheet(
       context,
       dateKey: todayKey(),
-      categories: categories,
-      initialCatId: category.id,
+      categories: widget.categories,
+      initialCatId: widget.category.id,
     );
     if (result == null) return;
-    final cat = categories.firstWhere(
+    final cat = widget.categories.firstWhere(
       (c) => c.id == result.catId,
       orElse: () => NoteCategory.undefined,
     );
@@ -833,9 +816,179 @@ class _CatDetail extends StatelessWidget {
     );
   }
 
+  // ── Date filter (client-side over the category stream) ───────────────────
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  DateTime? _parseDateKey(String key) {
+    final parts = key.split('-');
+    if (parts.length < 3) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null) return null;
+    return DateTime(y, m, d);
+  }
+
+  List<Note> _applyFilter(List<Note> notes) {
+    final from = _from;
+    final to = _to;
+    if (!_filterActive || from == null || to == null) return notes;
+    return notes.where((n) {
+      final d = _parseDateKey(n.dateKey);
+      if (d == null) return false;
+      return !d.isBefore(from) && !d.isAfter(to);
+    }).toList();
+  }
+
+  void _clearFilter() {
+    setState(() {
+      _filterActive = false;
+      _from = null;
+      _to = null;
+    });
+  }
+
+  Future<void> _openFilterDialog() async {
+    final now = DateTime.now();
+    DateTime from = _filterActive && _from != null
+        ? _from!
+        : _dateOnly(DateTime(now.year, now.month - 1, now.day));
+    DateTime to = _filterActive && _to != null ? _to! : _dateOnly(now);
+
+    final action = await showDialog<_FilterAction>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) {
+          Future<void> pick(bool isFrom) async {
+            final picked = await showDatePicker(
+              context: ctx,
+              initialDate: isFrom ? from : to,
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2035),
+            );
+            if (picked == null) return;
+            setDialog(() {
+              if (isFrom) {
+                from = _dateOnly(picked);
+                if (to.isBefore(from)) to = from;
+              } else {
+                to = _dateOnly(picked);
+                if (from.isAfter(to)) from = to;
+              }
+            });
+          }
+
+          return AlertDialog(
+            backgroundColor: AppColors.bg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Text(
+              '篩選日期',
+              style: AppText.body(size: 16, weight: FontWeight.w600),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _filterDateRow('從', from, () => pick(true)),
+                const SizedBox(height: 10),
+                _filterDateRow('至', to, () => pick(false)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, const _FilterAction.reset()),
+                child: Text(
+                  '重設',
+                  style: AppText.body(size: 14, color: AppColors.muted),
+                ),
+              ),
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, _FilterAction.apply(from, to)),
+                child: Text(
+                  '套用',
+                  style: AppText.body(
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: AppColors.dark,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (action == null || !mounted) return;
+    setState(() {
+      if (action.reset) {
+        _filterActive = false;
+        _from = null;
+        _to = null;
+      } else {
+        _filterActive = true;
+        _from = action.from;
+        _to = action.to;
+      }
+    });
+  }
+
+  Widget _filterDateRow(String label, DateTime value, VoidCallback onTap) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 28,
+          child: Text(
+            label,
+            style: AppText.body(size: 14, color: AppColors.muted),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${value.year}-${fmt2(value.month)}-${fmt2(value.day)}',
+                    style: AppText.body(size: 14),
+                  ),
+                  const Icon(
+                    LucideIcons.calendar,
+                    size: 15,
+                    color: AppColors.muted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _rangeLabel() {
+    final from = _from;
+    final to = _to;
+    if (from == null || to == null) return '';
+    return '${from.month}/${from.day} – ${to.month}/${to.day}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = context.read<NoteRepo>();
+    final category = widget.category;
     final icon = kNoteIconMap[category.iconName] ?? LucideIcons.tag;
 
     return StreamProvider<List<Note>>(
@@ -848,7 +1001,7 @@ class _CatDetail extends StatelessWidget {
       },
       child: Builder(
         builder: (context) {
-          final notes = context.watch<List<Note>>();
+          final notes = _applyFilter(context.watch<List<Note>>());
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
@@ -857,7 +1010,7 @@ class _CatDetail extends StatelessWidget {
               Row(
                 children: [
                   GestureDetector(
-                    onTap: onBack,
+                    onTap: widget.onBack,
                     child: Container(
                       width: 34,
                       height: 34,
@@ -878,17 +1031,61 @@ class _CatDetail extends StatelessWidget {
                     color: category.color,
                     icon: icon,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       category.label,
                       style: AppText.display(size: 24, weight: FontWeight.w500),
-                      overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  MrIconButton(
+                    icon: LucideIcons.funnel,
+                    iconSize: 16,
+                    bg: _filterActive
+                        ? AppColors.tint(category.color, 0.14)
+                        : null,
+                    iconColor: _filterActive ? category.color : null,
+                    onTap: _openFilterDialog,
                   ),
                 ],
               ),
+
+              // Active-filter indicator
+              if (_filterActive) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(LucideIcons.calendar, size: 13, color: category.color),
+                    const SizedBox(width: 6),
+                    Text(
+                      _rangeLabel(),
+                      style: AppText.caption(size: 12, color: AppColors.dark),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _clearFilter,
+                      child: Text(
+                        '清除',
+                        style: AppText.caption(size: 12, color: AppColors.muted),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
               const SizedBox(height: 16),
+
+              if (notes.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      _filterActive ? '此範圍內沒有札記' : '尚無札記',
+                      style: AppText.body(size: 13, color: AppColors.muted),
+                    ),
+                  ),
+                ),
 
               ...notes.map(
                 (note) => Padding(
@@ -934,6 +1131,21 @@ class _CatDetail extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Result of the category date-filter dialog: either a reset (clear) or an
+/// applied [from]/[to] range.
+class _FilterAction {
+  final bool reset;
+  final DateTime? from;
+  final DateTime? to;
+
+  const _FilterAction.reset()
+      : reset = true,
+        from = null,
+        to = null;
+
+  const _FilterAction.apply(this.from, this.to) : reset = false;
 }
 
 // ─── Per-category note count ────────────────────────────────────────────────
@@ -1012,6 +1224,45 @@ class _NoteCardState extends State<_NoteCard> {
     }
   }
 
+  Future<void> _edit() async {
+    final repo = context.read<NoteRepo>();
+    final categories = context.read<List<NoteCategory>>();
+    final note = widget.note;
+    final result = await showNoteModalSheet(
+      context,
+      dateKey: note.dateKey,
+      categories: categories,
+      initialCatId: note.category.id,
+      note: note,
+    );
+    if (result == null) return;
+    final cat = categories.firstWhere(
+      (c) => c.id == result.catId,
+      orElse: () => NoteCategory.undefined,
+    );
+    final removed = note.attachments
+        .where(
+          (a) => !result.keptAttachments
+              .any((k) => k.storagePath == a.storagePath),
+        )
+        .toList();
+    await repo.update(
+      note.copyWith(
+        title: result.title.isEmpty ? '無標題' : result.title,
+        content: result.content,
+        category: NoteCategoryRef(
+          id: cat.id,
+          label: cat.label,
+          color: cat.color,
+          iconName: cat.iconName,
+        ),
+        attachments: result.keptAttachments,
+      ),
+      added: result.added,
+      removed: removed,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final note = widget.note;
@@ -1063,6 +1314,7 @@ class _NoteCardState extends State<_NoteCard> {
                     : LucideIcons.chevronDown,
                 onTap: () => setState(() => _expanded = !_expanded),
               ),
+              _IconAction(icon: LucideIcons.pencil, onTap: _edit),
               _IconAction(icon: LucideIcons.trash2, onTap: _confirmDelete),
             ],
           ),

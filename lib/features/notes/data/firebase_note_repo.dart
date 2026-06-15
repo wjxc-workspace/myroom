@@ -116,12 +116,68 @@ class FirebaseNoteRepo implements NoteRepo {
   }
 
   @override
-  Future<Result<void>> update(Note note) async {
+  Future<Result<void>> update(
+    Note note, {
+    List<PendingAttachment> added = const [],
+    List<NoteAttachment> removed = const [],
+  }) async {
     try {
-      await _col.doc(note.id).update({
-        ...note.toJson(),
+      final ref = _col.doc(note.id);
+
+      // Upload newly picked attachments first; abort the update on failure.
+      final uploaded = <NoteAttachment>[];
+      final extractedWrites = <(String attId, String filename, String summary)>[];
+      for (final a in added) {
+        final attId = sha256.convert(a.bytes).toString();
+        final path = 'users/$_uid/notes/${note.id}/$attId.${a.ext}';
+        final up = await _storage.upload(
+          uid: _uid,
+          path: path,
+          bytes: a.bytes,
+          contentType: _contentType(a.type, a.ext),
+        );
+        switch (up) {
+          case Ok(value: final file):
+            uploaded.add(NoteAttachment(
+              type: a.type,
+              filename: a.filename,
+              storagePath: file.storagePath,
+              attId: attId,
+            ));
+            if (a.extractedText != null && a.type != 'image') {
+              extractedWrites.add((attId, a.filename, a.extractedText!));
+            }
+          case Err(failure: final f):
+            return Err(f);
+        }
+      }
+
+      final merged = note.copyWith(
+        attachments: [...note.attachments, ...uploaded],
+      );
+      await ref.update({
+        ...merged.toJson(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      for (final w in extractedWrites) {
+        await ref
+            .collection('extracted_texts')
+            .doc(w.$1)
+            .set({'filename': w.$2, 'summary': w.$3});
+      }
+
+      // `storageCascade` only runs on note delete, so removed attachments must
+      // be cleaned up here (best-effort — the object normally exists).
+      for (final r in removed) {
+        if (r.storagePath.isNotEmpty) await _storage.delete(r.storagePath);
+        if (r.attId.isNotEmpty) {
+          try {
+            await ref.collection('extracted_texts').doc(r.attId).delete();
+          } catch (_) {}
+        }
+      }
+
       return const Ok(null);
     } catch (e) {
       final f = mapFirebase(e);
@@ -168,10 +224,10 @@ class FirebaseNoteRepo implements NoteRepo {
       .map((s) => s.docs.map(NoteCategory.fromFirestore).toList());
 
   @override
-  Future<Result<void>> addNoteCategory(NoteCategory category) async {
+  Future<Result<String>> addNoteCategory(NoteCategory category) async {
     try {
-      await _catCol.add(category.toJson());
-      return const Ok(null);
+      final ref = await _catCol.add(category.toJson());
+      return Ok(ref.id);
     } catch (e) {
       final f = mapFirebase(e);
       AppErrors.present(f);

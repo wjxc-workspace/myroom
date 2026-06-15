@@ -16,7 +16,14 @@ abstract class NoteRepo {
   /// Creates a new note, uploading any [attachments] first. Returns the new id.
   Future<Result<String>> add(Note note, {List<PendingAttachment> attachments});
 
-  Future<Result<void>> update(Note note);
+  /// Updates [note]. Uploads any newly picked [added] attachments and merges
+  /// them onto [note.attachments] (the kept existing set); [removed] existing
+  /// attachments have their Storage object + `extracted_texts` doc cleaned up.
+  Future<Result<void>> update(
+    Note note, {
+    List<PendingAttachment> added,
+    List<NoteAttachment> removed,
+  });
 
   Future<Result<void>> delete(String id);
 
@@ -27,7 +34,8 @@ abstract class NoteRepo {
 
   Stream<List<NoteCategory>> watchNoteCategories();
 
-  Future<Result<void>> addNoteCategory(NoteCategory category);
+  /// Creates a category and returns its new document id.
+  Future<Result<String>> addNoteCategory(NoteCategory category);
 
   Future<Result<void>> updateNoteCategory(NoteCategory category);
 
