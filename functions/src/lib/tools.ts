@@ -144,6 +144,26 @@ function prop(type: string, description: string) {
   return { type, description };
 }
 
+/** The data-mutating tools. `chat` defers these into a confirm card the user
+ *  approves before they run (applied later by `applyChatActions`); the `list_*`
+ *  read tools are never deferred. */
+const WRITE_TOOLS = new Set([
+  "add_event",
+  "delete_event",
+  "add_todo",
+  "delete_todo",
+  "add_idea",
+  "delete_idea",
+  "add_note",
+  "delete_note",
+  "add_recap",
+]);
+
+/** Whether `name` is a mutating tool (add/delete) that must be confirmed. */
+export function isWriteTool(name: string): boolean {
+  return WRITE_TOOLS.has(name);
+}
+
 /** Executes one tool call and returns a short result string fed back to the
  *  model as a `function_call_output`. */
 export async function runToolCall(

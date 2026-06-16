@@ -16,6 +16,7 @@ export {
 
 // ── AI callables (Phase 2) ────────────────────────────────────────────────
 export { chat } from "./callable/chat";
+export { applyChatActions } from "./callable/applyChatActions";
 export { classifyMultiInput } from "./callable/classifyMultiInput";
 export { fetchRecommendations } from "./callable/fetchRecommendations";
 export { generateEraInsight } from "./callable/generateEraInsight";

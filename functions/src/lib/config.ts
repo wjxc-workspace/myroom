@@ -60,3 +60,8 @@ export const RATE_WINDOW_MS = 60 * 60 * 1000;
 /** Canned reply when the chat tool loop exhausts its rounds (AI_proxy.md §2). */
 export const LOOP_LIMIT_REPLY = "（AI 運算超出輪數限制，請再試）";
 export const MAX_CHAT_ROUNDS = 6;
+
+/** How many recent chat_messages to replay as context so the AI remembers the
+ *  conversation across turns (the Responses API only retains context within a
+ *  single tool loop, not across separate `chat` calls). */
+export const CHAT_HISTORY_LIMIT = 20;

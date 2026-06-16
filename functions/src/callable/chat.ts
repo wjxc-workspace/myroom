@@ -7,13 +7,19 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { db, REGION } from "../lib/admin";
 import { findNoteCat, loadNoteCats, loadTodoCats } from "../lib/categories";
-import { LOOP_LIMIT_REPLY, MAX_CHAT_ROUNDS, MODELS, REQ_TIMEOUT } from "../lib/config";
+import {
+  CHAT_HISTORY_LIMIT,
+  LOOP_LIMIT_REPLY,
+  MAX_CHAT_ROUNDS,
+  MODELS,
+  REQ_TIMEOUT,
+} from "../lib/config";
 import { buildContext } from "../lib/context";
 import { todayKey } from "../lib/date";
 import { createResponse, ResponsesParams } from "../lib/openai";
 import { chatSystemPrompt } from "../lib/prompts";
 import { enforceRateLimit } from "../lib/rateLimit";
-import { buildChatTools, runToolCall, ToolContext } from "../lib/tools";
+import { buildChatTools, isWriteTool, runToolCall, ToolContext } from "../lib/tools";
 import { loadSettings, requireUid } from "../middleware/auth";
 
 interface FunctionCall {
@@ -32,6 +38,34 @@ function functionCalls(output: Array<Record<string, unknown>>): FunctionCall[] {
     }));
 }
 
+interface HistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Loads the most recent chat turns (chronological) to seed the model input so
+ *  it remembers the conversation across separate `chat` calls. */
+async function loadHistory(
+  uid: string,
+  limit: number
+): Promise<HistoryTurn[]> {
+  const snap = await db
+    .collection(`users/${uid}/chat_messages`)
+    .orderBy("createdAt", "desc")
+    .limit(limit)
+    .get();
+  return snap.docs
+    .map((d) => ({
+      role: String(d.get("role") ?? "assistant"),
+      content: String(d.get("content") ?? ""),
+    }))
+    .filter(
+      (m): m is HistoryTurn =>
+        m.content.length > 0 && (m.role === "user" || m.role === "assistant")
+    )
+    .reverse();
+}
+
 export const chat = onCall(
   {
     region: REGION,
@@ -48,10 +82,13 @@ export const chat = onCall(
 
     const settings = await loadSettings(uid);
     const tz = settings.tz;
-    const [todoCats, noteCats, contextSummary] = await Promise.all([
+    // Loaded before the current user turn is appended below, so `history` holds
+    // only prior conversation (the new message is added explicitly to the input).
+    const [todoCats, noteCats, contextSummary, history] = await Promise.all([
       loadTodoCats(uid),
       loadNoteCats(uid),
       buildContext(uid, tz),
+      loadHistory(uid, CHAT_HISTORY_LIMIT),
     ]);
 
     const toolCtx: ToolContext = {
@@ -80,9 +117,17 @@ export const chat = onCall(
 
     let reply = "";
     let prevId: string | undefined;
-    // Responses-API continuation: first turn sends the user message; each tool
-    // round sends only the function_call_output items + previous_response_id.
-    let nextInput: unknown = [{ role: "user", content: message }];
+    // Write tools are NOT executed here: each add_*/delete_* call is captured as
+    // a proposed action and returned to the client, which shows a confirm card
+    // and only applies them (via `applyChatActions`) once the user accepts.
+    const proposed: { name: string; arguments: string }[] = [];
+    // Responses-API continuation: the first turn sends the recent history + the
+    // new user message; each tool round then sends only the function_call_output
+    // items + previous_response_id (which carries that first input forward).
+    let nextInput: unknown = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: message },
+    ];
 
     for (let round = 0; round < MAX_CHAT_ROUNDS; round++) {
       const params: ResponsesParams = {
@@ -107,7 +152,11 @@ export const chat = onCall(
 
       const outputs: unknown[] = [];
       for (const c of calls) {
-        const output = await runToolCall(c.name, c.arguments, toolCtx);
+        // Defer mutations for user confirmation; run read tools (list_*) live.
+        const output = isWriteTool(c.name)
+          ? (proposed.push({ name: c.name, arguments: c.arguments }),
+            "（已暫存此變更，正等待使用者點擊確認；請勿重複呼叫，僅需用一句話告知準備了哪些變更並請使用者確認）")
+          : await runToolCall(c.name, c.arguments, toolCtx);
         outputs.push({
           type: "function_call_output",
           call_id: c.call_id,
@@ -128,6 +177,8 @@ export const chat = onCall(
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    return { reply };
+    // proposed (if any) drives the client confirm card; the writes only happen
+    // once the user accepts and the client calls `applyChatActions`.
+    return { reply, proposedActions: proposed };
   }
 );

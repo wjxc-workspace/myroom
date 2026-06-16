@@ -9,6 +9,7 @@ import '../../../core/firebase_failure.dart';
 import '../../../core/result.dart';
 import '../domain/ai_resource.dart';
 import '../domain/ai_service.dart';
+import '../domain/chat_action.dart';
 import '../domain/classification.dart';
 
 /// [AiService] over Firebase Cloud Functions callables (AI_proxy.md §8). Any
@@ -40,10 +41,31 @@ class CloudFunctionAiService implements AiService {
       Map<String, dynamic>.from((data as Map?) ?? const {});
 
   @override
-  Future<Result<String>> chat(String message) => _guard(() async {
+  Future<Result<ChatTurn>> chat(String message) => _guard(() async {
         final res = await _fn('chat', timeout: const Duration(seconds: 120))
             .call<Object?>({'message': message});
-        return (_asMap(res.data)['reply'] as String?) ?? '';
+        final data = _asMap(res.data);
+        final actions = ((data['proposedActions'] as List?) ?? const [])
+            .map((e) =>
+                ProposedAction.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        return ChatTurn(
+          reply: (data['reply'] as String?) ?? '',
+          proposedActions: actions,
+        );
+      });
+
+  @override
+  Future<Result<List<String>>> applyChatActions(
+    List<ProposedAction> actions,
+  ) =>
+      _guard(() async {
+        final res =
+            await _fn('applyChatActions', timeout: const Duration(seconds: 90))
+                .call<Object?>(
+                    {'actions': actions.map((a) => a.toJson()).toList()});
+        final list = (_asMap(res.data)['results'] as List?) ?? const [];
+        return list.map((e) => e.toString()).toList();
       });
 
   @override

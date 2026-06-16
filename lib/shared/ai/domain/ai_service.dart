@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../../core/result.dart';
 import 'ai_resource.dart';
+import 'chat_action.dart';
 import 'classification.dart';
 
 /// Client surface over the Cloud Functions AI callables (AI_proxy.md). There is
@@ -10,8 +11,15 @@ import 'classification.dart';
 /// error banner by the implementation.
 abstract class AiService {
   /// Sends a chat message; the function appends the user + assistant turns to
-  /// `chat_messages` (the UI updates from its stream). Returns the reply text.
-  Future<Result<String>> chat(String message);
+  /// `chat_messages` (the UI updates from its stream). Returns the reply text
+  /// plus any data changes the AI proposed but deferred for the user to confirm
+  /// (see [applyChatActions]).
+  Future<Result<ChatTurn>> chat(String message);
+
+  /// Applies the [actions] the user accepted on a chat confirm card. The server
+  /// re-runs the same tool executors and appends an assistant result message;
+  /// returns the per-action result strings.
+  Future<Result<List<String>>> applyChatActions(List<ProposedAction> actions);
 
   /// Classifies a Smart Add submission into typed items (AI_proxy.md §5).
   Future<Result<List<ClassificationItem>>> classifyMultiInput({
