@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -11,11 +12,14 @@ import '../features/auth/presentation/login_page.dart';
 import '../features/calendar/presentation/calendar_page.dart';
 import '../features/chat/presentation/chat_overlay.dart';
 import '../features/ideas/presentation/ideas_page.dart';
+import '../features/notes/data/firebase_note_repo.dart';
+import '../features/notes/domain/note_repo.dart';
 import '../features/notes/presentation/note_detail_page.dart';
 import '../features/notes/presentation/notes_page.dart';
 import '../features/recap/presentation/recap_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/todo/presentation/todo_page.dart';
+import '../shared/auth/domain/app_user.dart';
 import '../shared/auth/domain/auth_repo.dart';
 import '../shared/storage/firebase_storage_repo.dart';
 import '../shared/storage/storage_repo.dart';
@@ -87,16 +91,31 @@ GoRouter buildRouter(AuthRepo authRepo) {
                     ),
                     // Single note — pushed over the whole shell (root navigator)
                     // for a full-screen view, with the list image flying in via
-                    // Hero. The Note is handed over through `extra`; a StorageRepo
-                    // is provided here from the root FirebaseStorage singleton.
+                    // Hero. The Note is handed over through `extra`; being outside
+                    // the user-scoped tier, a StorageRepo and a NoteRepo are
+                    // re-provided here from the root singletons + uid so the page
+                    // can stream the note and edit it in place.
                     GoRoute(
                       path: ':noteId',
                       parentNavigatorKey: _rootNavigatorKey,
-                      builder: (_, state) {
+                      builder: (context, state) {
                         final args = state.extra as NoteDetailArgs?;
-                        return Provider<StorageRepo>(
-                          create: (c) =>
-                              FirebaseStorageRepo(c.read<FirebaseStorage>()),
+                        final uid = context.read<AppUser?>()?.uid;
+                        return MultiProvider(
+                          providers: [
+                            Provider<StorageRepo>(
+                              create: (c) =>
+                                  FirebaseStorageRepo(c.read<FirebaseStorage>()),
+                            ),
+                            if (uid != null)
+                              Provider<NoteRepo>(
+                                create: (c) => FirebaseNoteRepo(
+                                  c.read<FirebaseFirestore>(),
+                                  uid,
+                                  c.read<StorageRepo>(),
+                                ),
+                              ),
+                          ],
                           child: NoteDetailPage(
                             noteId: state.pathParameters['noteId']!,
                             note: args?.note,

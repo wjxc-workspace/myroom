@@ -10,6 +10,10 @@ abstract class NoteRepo {
   /// Streams the notes embedding [catId] (createdAt desc).
   Stream<List<Note>> watchNotesByCategory(String catId);
 
+  /// Streams a single note by [id] (null once it no longer exists). Lets the
+  /// full-screen detail page reflect inline edits live.
+  Stream<Note?> watchNote(String id);
+
   /// Streams the set of dateKeys with ≥1 note (for calendar dot indicators).
   Stream<Set<String>> watchNoteDateKeys();
 

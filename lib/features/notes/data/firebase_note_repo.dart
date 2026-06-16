@@ -47,6 +47,12 @@ class FirebaseNoteRepo implements NoteRepo {
       .map((s) => s.docs.map(Note.fromFirestore).toList());
 
   @override
+  Stream<Note?> watchNote(String id) => _col
+      .doc(id)
+      .snapshots()
+      .map((d) => d.exists ? Note.fromFirestore(d) : null);
+
+  @override
   Stream<Set<String>> watchNoteDateKeys() => _col.snapshots().map(
         (s) => s.docs
             .map((d) => (d.data()['dateKey'] as String?) ?? '')

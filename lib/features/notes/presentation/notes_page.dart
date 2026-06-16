@@ -1224,45 +1224,6 @@ class _NoteCardState extends State<_NoteCard> {
     }
   }
 
-  Future<void> _edit() async {
-    final repo = context.read<NoteRepo>();
-    final categories = context.read<List<NoteCategory>>();
-    final note = widget.note;
-    final result = await showNoteModalSheet(
-      context,
-      dateKey: note.dateKey,
-      categories: categories,
-      initialCatId: note.category.id,
-      note: note,
-    );
-    if (result == null) return;
-    final cat = categories.firstWhere(
-      (c) => c.id == result.catId,
-      orElse: () => NoteCategory.undefined,
-    );
-    final removed = note.attachments
-        .where(
-          (a) => !result.keptAttachments
-              .any((k) => k.storagePath == a.storagePath),
-        )
-        .toList();
-    await repo.update(
-      note.copyWith(
-        title: result.title.isEmpty ? '無標題' : result.title,
-        content: result.content,
-        category: NoteCategoryRef(
-          id: cat.id,
-          label: cat.label,
-          color: cat.color,
-          iconName: cat.iconName,
-        ),
-        attachments: result.keptAttachments,
-      ),
-      added: result.added,
-      removed: removed,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final note = widget.note;
@@ -1314,7 +1275,6 @@ class _NoteCardState extends State<_NoteCard> {
                     : LucideIcons.chevronDown,
                 onTap: () => setState(() => _expanded = !_expanded),
               ),
-              _IconAction(icon: LucideIcons.pencil, onTap: _edit),
               _IconAction(icon: LucideIcons.trash2, onTap: _confirmDelete),
             ],
           ),
