@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,7 @@ import '../../../core/app_errors.dart';
 import '../../../core/date_format.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/mr_icon_button.dart';
+import '../../../router/routes.dart';
 import '../domain/event.dart';
 import '../domain/event_repo.dart';
 
@@ -282,6 +284,36 @@ class _CalendarBodyState extends State<_CalendarBody> {
   @override
   Widget build(BuildContext context) {
     final events = context.watch<List<CalendarEvent>>();
+    // Month view is the calendar's home: the Android back button collapses the
+    // day/week view back to month instead of leaving the tab. A PopScope can't
+    // do this here — go_router only routes the system back into a branch
+    // navigator when it can pop, and this branch has a single route — so we
+    // intercept at the Router level with BackButtonListener.
+    return BackButtonListener(
+      onBackButtonPressed: _handleBackButton,
+      child: _buildCalendar(events),
+    );
+  }
+
+  // Returns true when the press is consumed (day/week → month), false to let
+  // the system handle it. Every tab stays alive in the swipe strip, so this
+  // listener keeps back-button priority even when another tab or an overlay is
+  // showing — hence the guards: act only while the bare calendar tab is the
+  // visible content, and never when something is layered above it. `canPop`
+  // covers open modal sheets (event detail / add-edit), which are pushed on the
+  // root navigator and so leave `matchedLocation` on /calendar.
+  Future<bool> _handleBackButton() async {
+    if (!mounted || _view == CalendarView.month) return false;
+    final router = GoRouter.of(context);
+    if (router.state.matchedLocation != Routes.calendar || router.canPop()) {
+      return false;
+    }
+    setState(() => _view = CalendarView.month);
+    _resetCalView();
+    return true;
+  }
+
+  Widget _buildCalendar(List<CalendarEvent> events) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
