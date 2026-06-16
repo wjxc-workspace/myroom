@@ -21,21 +21,21 @@ class _TutorialOverlayState extends State<TutorialOverlay>
 
   static const _pages = [
     _TutorialPage(
-      title: 'Welcome to myroom',
+      title: '歡迎來到 MyRoom',
       description:
-          'Your personal space to capture everything that matters — tasks, ideas, notes, and more.',
+          '紀錄任何你在意的事務 — 任務、想法、筆記、行程...',
       illustration: _IllustrationWelcome(),
     ),
     _TutorialPage(
-      title: 'Add Anything You Want',
+      title: '加入任何東西',
       description:
-          "Press the '+' button to enter the 'add anything you want mode' — type freely and let the app figure out what it is.",
+          "按下 '+' 進入 '隨心加模式' — 輸入任何東西，AI會分類好一切。",
       illustration: _IllustrationAdd(),
     ),
     _TutorialPage(
-      title: 'Explore Your Room',
+      title: '自由探索吧！',
       description:
-          'Swipe between tabs to visit your Calendar, Todos, Ideas, Notes, and Recap pages.',
+          '在五個分頁中切換探索，別忘了在一段時間後看看你有什麼成就。',
       illustration: _IllustrationNavBar(),
     ),
   ];
@@ -160,7 +160,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                       ),
                       const Spacer(),
                       _NavButton(
-                        label: isLast ? 'Get Started' : 'Next',
+                        label: isLast ? '開始探索' : '下一頁',
                         icon: isLast ? LucideIcons.check : LucideIcons.chevronRight,
                         iconOnRight: true,
                         onTap: isLast ? widget.onDone : () => _goTo(_page + 1),
@@ -261,11 +261,11 @@ class _IllustrationWelcome extends StatelessWidget {
               child: const Icon(LucideIcons.house, color: Colors.white, size: 28),
             ),
             const SizedBox(height: 14),
-            Text('myroom',
+            Text('MyRoom',
                 style: AppText.display(
                     size: 26, italic: true, weight: FontWeight.w400)),
             const SizedBox(height: 4),
-            Text('your personal space', style: AppText.caption(size: 11)),
+            Text('你的個人空間', style: AppText.caption(size: 11)),
           ],
         ),
       ),
@@ -383,11 +383,11 @@ class _IllustrationNavBar extends StatelessWidget {
   const _IllustrationNavBar();
 
   static const _tabs = [
-    (LucideIcons.calendar, 'Cal'),
-    (LucideIcons.squareCheck, 'Todo'),
-    (LucideIcons.lightbulb, 'Ideas'),
-    (LucideIcons.fileText, 'Notes'),
-    (LucideIcons.award, 'Recap'),
+    (LucideIcons.calendar, '行事曆'),
+    (LucideIcons.squareCheck, '待辦'),
+    (LucideIcons.lightbulb, '靈感'),
+    (LucideIcons.fileText, '札記'),
+    (LucideIcons.award, '成就'),
   ];
 
   @override
