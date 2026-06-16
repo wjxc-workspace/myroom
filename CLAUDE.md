@@ -15,6 +15,14 @@ recaps). A recap page summarizes achievements and past/future eras.
   doc exists. The `StatefulShellRoute`'s `navigatorContainerBuilder` lays the five tabs + the Smart
   Add overlay out as a swipeable `PageView` strip (`app_shell/swipe_shell.dart`): edge-10% drags
   switch tab / reveal Add, centre drags defer to in-page gestures (calendar month-flip, todo delete).
+  One route bucks the `AuthenticatedScope` convention: the full-screen note detail (`notes/{noteId}`)
+  is pushed on the **root** navigator (`parentNavigatorKey: _rootNavigatorKey`) so the list/recap
+  thumbnail can `Hero`-fly over the whole shell. Being outside the user-scoped tier, it takes the
+  `Note` via the route's `extra` (`NoteDetailArgs`) and re-provides `StorageRepo` locally from the
+  root `FirebaseStorage` singleton. Hero tags are surface-scoped (`note-image-<surface>-<id>`) because
+  every tab stays alive in the strip, so the same note's thumbnail can exist in more than one tab at
+  once. The category detail (`notes/category/{catId}`) stays on the branch navigator (keeps the
+  user-scoped tier in scope).
 - **Backend (`functions/`)** — TypeScript Cloud Functions, region `us-central1`. Seven callables
   (`chat`, `classifyMultiInput`, `fetchRecommendations`, `generateEraInsight`, `transcribe`,
   `exportRecap`, `exportAchievement`) on the OpenAI Responses API, plus triggers (`provisionUser`,

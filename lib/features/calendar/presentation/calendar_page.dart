@@ -369,8 +369,25 @@ class _CalendarBodyState extends State<_CalendarBody> {
               }
             },
             itemCount: 3,
-            itemBuilder: (context, i) =>
-                _buildViewForDate(_dateForOffset(i - 1), events),
+            itemBuilder: (context, i) => AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.93, end: 1.0).animate(anim),
+                  child: child,
+                ),
+              ),
+              // Keyed by the view only, so changing month→day (or via the
+              // 月/週/日 toggle) animates, but horizontal date swipes — which
+              // keep the same view — update in place without a switch.
+              child: KeyedSubtree(
+                key: ValueKey(_view),
+                child: _buildViewForDate(_dateForOffset(i - 1), events),
+              ),
+            ),
           ),
         ),
       ],

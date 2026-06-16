@@ -1,10 +1,15 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/app_errors.dart';
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../router/routes.dart';
+import '../../notes/presentation/note_detail_page.dart';
 import '../../../shared/ai/domain/ai_service.dart';
 import '../../calendar/domain/event.dart';
 import '../../calendar/domain/event_repo.dart';
@@ -14,6 +19,7 @@ import '../../notes/domain/note.dart';
 import '../../notes/domain/note_repo.dart';
 import '../../todo/domain/todo.dart';
 import '../../todo/domain/todo_repo.dart';
+import '../../../shared/storage/storage_repo.dart';
 import '../domain/achievement.dart';
 import '../domain/achievement_repo.dart';
 import '../domain/recap.dart';
@@ -46,6 +52,71 @@ const _eraIcon = <_Era, IconData>{
 
 String _fmt2(int n) => n.toString().padLeft(2, '0');
 String _fmtDate(DateTime d) => '${d.year}/${d.month}/${d.day}';
+
+/// The era tag chip (coloured dot + label) pinned to the banner's bottom-left.
+Widget _eraLabelChip(_Era era, Color c) => Positioned(
+      bottom: 10,
+      left: 12,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.28),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+            const SizedBox(width: 5),
+            Text(
+              _eraLabel[era]!,
+              style: AppText.caption(
+                  size: 9,
+                  color: Colors.white,
+                  weight: FontWeight.w700,
+                  letterSpacing: 1),
+            ),
+          ],
+        ),
+      ),
+    );
+
+/// The default banner used when an era has no note image to show: a soft
+/// gradient with a faded era glyph.
+Widget _eraGradientBanner(_Era era, Color c) => ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        height: 172,
+        width: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.mix(c, Colors.white, 0.12),
+                    AppColors.mix(c, Colors.white, 0.32),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              right: -10,
+              bottom: -18,
+              child: Icon(_eraIcon[era]!,
+                  size: 150, color: Colors.white.withOpacity(0.35)),
+            ),
+            _eraLabelChip(era, c),
+          ],
+        ),
+      ),
+    );
 
 /// A single era-tagged review card (the design's `RecapItem`). Built from the
 /// user's [Achievement] era blocks and [Recap] entries — there is no dedicated
@@ -270,6 +341,31 @@ class _RecapViewState extends State<_RecapView> {
 
   static const _eras = _Era.values;
 
+  // Each era's banner shows a random note image. The seed is fixed per view
+  // instance (so photos don't reshuffle on every rebuild) but differs each time
+  // the timeline is opened, rotating the photos when several are stored.
+  final Random _rand = Random();
+  late final int _bannerSeed = _rand.nextInt(1 << 31);
+
+  // Assigns distinct note images to the eras. With fewer than three images the
+  // fill priority is 現在 → 過去 → 未來; eras beyond the supply get null (and
+  // fall back to the gradient banner).
+  Map<_Era, NoteAttachment?> _bannerImages() {
+    final seen = <String>{};
+    final imgs = <NoteAttachment>[];
+    for (final n in widget.notes) {
+      for (final a in n.attachments) {
+        if (a.type == 'image' && seen.add(a.storagePath)) imgs.add(a);
+      }
+    }
+    imgs.shuffle(Random(_bannerSeed));
+    const priority = [_Era.now, _Era.past, _Era.future];
+    return {
+      for (var i = 0; i < priority.length; i++)
+        priority[i]: i < imgs.length ? imgs[i] : null,
+    };
+  }
+
   final Map<_Era, _AIContent> _ai = {
     for (final e in _Era.values) e: _AIContent(),
   };
@@ -323,7 +419,7 @@ class _RecapViewState extends State<_RecapView> {
       case _Era.past:
         final done = widget.todos.where((t) => t.isCompleted).toList();
         buf.writeln('已完成任務：${done.length} 項');
-        buf.writeln('筆記：${widget.notes.length} 頁');
+        buf.writeln('札記：${widget.notes.length} 頁');
         buf.writeln(
             '里程碑：${widget.recapItems.where((r) => r.era == _Era.past).length} 個');
         if (done.isNotEmpty) {
@@ -365,7 +461,7 @@ class _RecapViewState extends State<_RecapView> {
     switch (era) {
       case _Era.past:
         final done = widget.todos.where((t) => t.isCompleted).length;
-        return '完成 $done 項 · ${widget.notes.length} 頁筆記';
+        return '完成 $done 項 · ${widget.notes.length} 頁札記';
       case _Era.now:
         final active = widget.todos.where((t) => !t.isCompleted).length;
         return '$active 項待辦 · ${_upcomingEvents().length} 個行程';
@@ -376,6 +472,7 @@ class _RecapViewState extends State<_RecapView> {
 
   @override
   Widget build(BuildContext context) {
+    final banners = _bannerImages();
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 420),
@@ -422,6 +519,7 @@ class _RecapViewState extends State<_RecapView> {
                   notes: widget.notes,
                   insight: ai.insight,
                   aiLoading: ai.loading,
+                  bannerImage: banners[era],
                 );
               },
             ),
@@ -548,6 +646,7 @@ class _EraPage extends StatelessWidget {
   final List<Note> notes;
   final String? insight;
   final bool aiLoading;
+  final NoteAttachment? bannerImage;
 
   const _EraPage({
     required this.era,
@@ -558,6 +657,7 @@ class _EraPage extends StatelessWidget {
     required this.notes,
     required this.insight,
     required this.aiLoading,
+    required this.bannerImage,
   });
 
   @override
@@ -595,70 +695,12 @@ class _EraPage extends StatelessWidget {
     }
   }
 
-  // ── Hero banner (gradient + faded era glyph; no image backend) ──────────────
+  // ── Banner — a random note image when available, else a gradient glyph ──────
 
   Widget _buildImage(Color c) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: SizedBox(
-        height: 172,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.mix(c, Colors.white, 0.12),
-                    AppColors.mix(c, Colors.white, 0.32),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              right: -10,
-              bottom: -18,
-              child: Icon(_eraIcon[era]!,
-                  size: 150, color: Colors.white.withOpacity(0.35)),
-            ),
-            Positioned(
-              bottom: 10,
-              left: 12,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.28),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                        width: 5,
-                        height: 5,
-                        decoration:
-                            BoxDecoration(color: c, shape: BoxShape.circle)),
-                    const SizedBox(width: 5),
-                    Text(
-                      _eraLabel[era]!,
-                      style: AppText.caption(
-                          size: 9,
-                          color: Colors.white,
-                          weight: FontWeight.w700,
-                          letterSpacing: 1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    final att = bannerImage;
+    if (att == null) return _eraGradientBanner(era, c);
+    return _EraBannerImage(att: att, era: era, color: c);
   }
 
   // ── Insight section ──────────────────────────────────────────────────────────
@@ -735,7 +777,7 @@ class _EraPage extends StatelessWidget {
       children: [
         _StatsRow(color: c, chips: [
           _StatData('${done.length}', '已完成\n任務'),
-          _StatData('${noteList.length}', '筆記\n頁數'),
+          _StatData('${noteList.length}', '札記\n頁數'),
           _StatData('${recapItems.length}', '達成\n里程碑'),
         ]),
         if (done.isNotEmpty) ...[
@@ -752,7 +794,7 @@ class _EraPage extends StatelessWidget {
         ],
         if (noteList.isNotEmpty) ...[
           const SizedBox(height: 18),
-          _SectionTitle(label: '近期筆記', color: c),
+          _SectionTitle(label: '近期札記', color: c),
           const SizedBox(height: 8),
           ...noteList.take(2).map((n) => _NoteCard(note: n)),
         ],
@@ -818,6 +860,102 @@ class _EraPage extends StatelessWidget {
           ...ideas.map((i) => _IdeaRow(idea: i, color: c)),
         ],
       ],
+    );
+  }
+}
+
+// ─── Era banner image ─────────────────────────────────────────────────────────
+
+/// Resolves and shows a note image as an era banner. While loading or on error
+/// it falls back to the gradient banner so the layout never goes blank.
+class _EraBannerImage extends StatefulWidget {
+  final NoteAttachment att;
+  final _Era era;
+  final Color color;
+
+  const _EraBannerImage({
+    required this.att,
+    required this.era,
+    required this.color,
+  });
+
+  @override
+  State<_EraBannerImage> createState() => _EraBannerImageState();
+}
+
+class _EraBannerImageState extends State<_EraBannerImage> {
+  String? _url;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_EraBannerImage old) {
+    super.didUpdateWidget(old);
+    if (old.att.storagePath != widget.att.storagePath) {
+      _url = null;
+      _failed = false;
+      _resolve();
+    }
+  }
+
+  Future<void> _resolve() async {
+    try {
+      final url =
+          await context.read<StorageRepo>().downloadUrl(widget.att.storagePath);
+      if (mounted) setState(() => _url = url);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _url;
+    if (_failed || url == null) {
+      return _eraGradientBanner(widget.era, widget.color);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        height: 172,
+        width: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  _eraGradientBanner(widget.era, widget.color),
+            ),
+            // Bottom scrim so the era label chip stays legible over any photo.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 64,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.38),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            _eraLabelChip(widget.era, widget.color),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1215,7 +1353,7 @@ class _MonthlyView extends StatefulWidget {
 }
 
 class _MonthlyViewState extends State<_MonthlyView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _warmAccent = Color(0xFFC8956C);
 
   static const _monthCn = [
@@ -1229,11 +1367,12 @@ class _MonthlyViewState extends State<_MonthlyView>
     '開心': 2, '快樂': 2, '高興': 2, '興奮': 2, '幸福': 2,
     '感謝': 1, '感動': 1, '充實': 1, '進步': 1, '成功': 1,
     '順利': 1, '完成': 1, '滿足': 1, '輕鬆': 1, '享受': 1,
-    '期待': 1, '有趣': 1, '愉快': 1, '放鬆': 1, '舒服': 1,
+    '期待': 1, '有趣': 1, '愉快': 1, '放鬆': 1, '舒服': 1, '好':1,
     '難過': -2, '沮喪': -2, '崩潰': -2, '痛苦': -2, '絕望': -2,
     '焦慮': -1, '擔心': -1, '煩惱': -1, '壓力': -1, '疲憊': -1,
     '疲倦': -1, '累': -1, '迷茫': -1, '困難': -1, '卡住': -1,
     '生氣': -1, '憤怒': -1, '後悔': -1, '失落': -1, '無聊': -1,
+    '緊張':-1, '壞':-1
   };
 
   String? _selectedCat;
@@ -1241,6 +1380,11 @@ class _MonthlyViewState extends State<_MonthlyView>
   bool _insightLoading = false;
   bool _insightLoaded = false;
   late AnimationController _enter;
+  // Drives the mood-trend line's one-shot left-to-right reveal. Fired the first
+  // time the chart scrolls into the viewport (not on page access), and only once.
+  late AnimationController _chartCtrl;
+  final GlobalKey _chartKey = GlobalKey();
+  bool _chartRevealed = false;
 
   int get _year => DateTime.now().year;
   int get _month => DateTime.now().month;
@@ -1253,13 +1397,36 @@ class _MonthlyViewState extends State<_MonthlyView>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     )..forward();
+    _chartCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
     _loadInsight();
+    // Cover the case where the chart is already on-screen without any scroll.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeRevealChart());
   }
 
   @override
   void dispose() {
     _enter.dispose();
+    _chartCtrl.dispose();
     super.dispose();
+  }
+
+  // Fires the chart's left-to-right reveal the first time it enters the viewport.
+  void _maybeRevealChart() {
+    if (_chartRevealed || !mounted) return;
+    final ctx = _chartKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final screenH = MediaQuery.of(context).size.height;
+    // Visible once its top edge has crossed ~85% of the screen height.
+    if (top < screenH * 0.85 && top + box.size.height > 0) {
+      _chartRevealed = true;
+      _chartCtrl.forward();
+    }
   }
 
   // Returns an animation for a specific stagger interval.
@@ -1390,7 +1557,7 @@ class _MonthlyViewState extends State<_MonthlyView>
       ..writeln('月份：${_monthCn[_month]}月 $_year')
       ..writeln('行事曆行程：${events.length} 個')
       ..writeln('完成待辦：${done.length} 項')
-      ..writeln('日記筆記：${notes.length} 則')
+      ..writeln('日記札記：${notes.length} 則')
       ..writeln('本月平均情緒分數（1-5）：${avgScore.toStringAsFixed(1)}');
 
     if (keywords.isNotEmpty) {
@@ -1398,7 +1565,7 @@ class _MonthlyViewState extends State<_MonthlyView>
     }
 
     if (notes.isNotEmpty) {
-      buf.writeln('\n筆記摘錄：');
+      buf.writeln('\n札記摘錄：');
       for (final n in notes.take(5)) {
         final title =
             (n.title.isNotEmpty && n.title != '無標題') ? n.title : '';
@@ -1439,7 +1606,12 @@ class _MonthlyViewState extends State<_MonthlyView>
     final notes = _monthNotes;
     final filtered = _filteredNotes;
 
-    return SingleChildScrollView(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (_) {
+        _maybeRevealChart();
+        return false;
+      },
+      child: SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1477,7 +1649,7 @@ class _MonthlyViewState extends State<_MonthlyView>
                     _MthStat(
                         icon: LucideIcons.fileText,
                         value: '${notes.length}',
-                        label: '筆記',
+                        label: '札記',
                         unit: '則'),
                     _MthStat(
                         icon: LucideIcons.image,
@@ -1532,6 +1704,7 @@ class _MonthlyViewState extends State<_MonthlyView>
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -1562,7 +1735,7 @@ class _MonthlyViewState extends State<_MonthlyView>
     if (notes.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Text('本月暫無筆記',
+        child: Text('本月暫無札記',
             style: AppText.caption(size: 13, color: AppColors.muted)),
       );
     }
@@ -1617,11 +1790,18 @@ class _MonthlyViewState extends State<_MonthlyView>
                     const SizedBox(width: 4),
                     Expanded(
                       child: SizedBox(
+                        key: _chartKey,
                         height: 115,
-                        child: CustomPaint(
-                          painter: _TrendPainter(
-                              scores: scores, lineColor: _warmAccent),
-                          size: Size.infinite,
+                        child: AnimatedBuilder(
+                          animation: _chartCtrl,
+                          builder: (_, __) => CustomPaint(
+                            painter: _TrendPainter(
+                              scores: scores,
+                              lineColor: _warmAccent,
+                              progress: _chartCtrl.value,
+                            ),
+                            size: Size.infinite,
+                          ),
                         ),
                       ),
                     ),
@@ -1889,13 +2069,80 @@ class _MthFilterChip extends StatelessWidget {
   }
 }
 
-class _MthHighlightCard extends StatelessWidget {
+class _MthHighlightCard extends StatefulWidget {
   const _MthHighlightCard({required this.note});
   final Note note;
 
   @override
+  State<_MthHighlightCard> createState() => _MthHighlightCardState();
+}
+
+class _MthHighlightCardState extends State<_MthHighlightCard> {
+  String? _imgUrl;
+  bool _imgFailed = false;
+
+  NoteAttachment? get _firstImage {
+    for (final a in widget.note.attachments) {
+      if (a.type == 'image') return a;
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final img = _firstImage;
+    if (img != null) _resolveImage(img.storagePath);
+  }
+
+  Future<void> _resolveImage(String storagePath) async {
+    try {
+      final url = await context.read<StorageRepo>().downloadUrl(storagePath);
+      if (mounted) setState(() => _imgUrl = url);
+    } catch (_) {
+      if (mounted) setState(() => _imgFailed = true);
+    }
+  }
+
+  Widget _buildHeader(Color catColor, bool hasImg) {
+    if (hasImg && _imgUrl != null && !_imgFailed) {
+      // Shares the Hero tag with the note detail page's first image so the
+      // photo flies across on tap.
+      // 'recap' surface keeps this tag distinct from the notes tab's hero for
+      // the same note (both tabs are kept alive at once → tags must not clash).
+      return Hero(
+        tag: noteImageHeroTag(widget.note.id, surface: 'recap'),
+        child: Image.network(
+          _imgUrl!,
+          height: 100,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _placeholder(catColor, hasImg),
+        ),
+      );
+    }
+    return _placeholder(catColor, hasImg);
+  }
+
+  Widget _placeholder(Color catColor, bool hasImg) {
+    return Container(
+      height: 100,
+      width: double.infinity,
+      color: catColor.withOpacity(hasImg ? 0.18 : 0.08),
+      child: Center(
+        child: Icon(
+          hasImg ? LucideIcons.image : LucideIcons.fileText,
+          size: 28,
+          color: catColor.withOpacity(0.55),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hasImg = note.attachments.any((a) => a.type == 'image');
+    final note = widget.note;
+    final hasImg = _firstImage != null;
     final content = note.content;
     final preview =
         content.length > 45 ? '${content.substring(0, 45)}…' : content;
@@ -1907,7 +2154,15 @@ class _MthHighlightCard extends StatelessWidget {
         (note.title.isEmpty || note.title == '無標題') ? '' : note.title;
     final catColor = note.category.color;
 
-    return Container(
+    return GestureDetector(
+      onTap: () => context.push(
+        '${Routes.notes}/${note.id}',
+        extra: NoteDetailArgs(
+          note: note,
+          heroTag: hasImg ? noteImageHeroTag(note.id, surface: 'recap') : null,
+        ),
+      ),
+      child: Container(
       width: 148,
       margin: const EdgeInsets.only(right: 10),
       decoration: BoxDecoration(
@@ -1920,18 +2175,7 @@ class _MthHighlightCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 100,
-            width: double.infinity,
-            color: catColor.withOpacity(hasImg ? 0.18 : 0.08),
-            child: Center(
-              child: Icon(
-                hasImg ? LucideIcons.image : LucideIcons.fileText,
-                size: 28,
-                color: catColor.withOpacity(0.55),
-              ),
-            ),
-          ),
+          _buildHeader(catColor, hasImg),
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
             child: Column(
@@ -1956,6 +2200,7 @@ class _MthHighlightCard extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -1963,11 +2208,19 @@ class _MthHighlightCard extends StatelessWidget {
 // ─── Trend chart painter ─────────────────────────────────────────────────────
 
 class _TrendPainter extends CustomPainter {
-  _TrendPainter({required this.scores, required this.lineColor});
+  _TrendPainter({
+    required this.scores,
+    required this.lineColor,
+    this.progress = 1.0,
+  });
 
   // Each value is a mood score in the range [1, 5].
   final List<double> scores;
   final Color lineColor;
+
+  // Left-to-right reveal fraction [0,1]: the line, fill and dots are only drawn
+  // up to `progress` of the chart width. The static frame is always full.
+  final double progress;
 
   // Maps score 1–5 to a y-coordinate (score 5 → top, score 1 → bottom).
   double _sy(double score, double h) => h * (1 - (score - 1) / 4.0);
@@ -1985,7 +2238,7 @@ class _TrendPainter extends CustomPainter {
       Paint()..color = const Color(0xFFF9F2EB),
     );
 
-    // Subtle horizontal guide lines at each score level (1–5)
+    // Subtle horizontal guide lines at each score level (1–5) — always full.
     final guidePaint = Paint()
       ..color = const Color(0xFFD4B896).withOpacity(0.45)
       ..strokeWidth = 0.7
@@ -1997,6 +2250,12 @@ class _TrendPainter extends CustomPainter {
 
     final step = size.width / (scores.length - 1);
     Offset pt(int i) => Offset(i * step, _sy(scores[i], size.height));
+
+    // Clip the data layers to the revealed width so the line grows left→right.
+    final revealW = size.width * progress.clamp(0.0, 1.0);
+    if (revealW <= 0) return;
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(0, 0, revealW, size.height));
 
     // Fill area under the line
     final fillPath = Path()
@@ -2030,7 +2289,9 @@ class _TrendPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round,
     );
 
-    // Circle dots — white fill + colored border
+    canvas.restore();
+
+    // Circle dots — white fill + colored border. Only those already revealed.
     final dotFill = Paint()
       ..color = const Color(0xFFF9F2EB)
       ..style = PaintingStyle.fill;
@@ -2039,6 +2300,7 @@ class _TrendPainter extends CustomPainter {
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
     for (int i = 0; i < scores.length; i++) {
+      if (pt(i).dx > revealW) continue;
       canvas.drawCircle(pt(i), 4.5, dotFill);
       canvas.drawCircle(pt(i), 4.5, dotStroke);
     }
@@ -2046,7 +2308,9 @@ class _TrendPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrendPainter old) =>
-      old.scores != scores || old.lineColor != lineColor;
+      old.scores != scores ||
+      old.lineColor != lineColor ||
+      old.progress != progress;
 }
 
 // ─── Scroll physics ───────────────────────────────────────────────────────────

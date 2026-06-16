@@ -84,7 +84,7 @@ export async function buildContext(uid: string, tz: string): Promise<string> {
     noteLines.push(`  - [${d.id}] ${dateKey} ${clip(d.get("content") as string)}`);
   }
   if (noteLines.length > 0) {
-    sections.push(`近 7 天筆記：\n${noteLines.join("\n")}`);
+    sections.push(`近 7 天札記：\n${noteLines.join("\n")}`);
   }
 
   // Latest 20 ideas (users/{uid}/ideas/data/user_ideas).

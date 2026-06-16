@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -8,10 +9,12 @@ import '../../../core/date_format.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/mr_card.dart';
 import '../../../core/widgets/mr_icon_button.dart';
+import '../../../router/routes.dart';
 import '../../../shared/storage/storage_repo.dart';
 import '../domain/note.dart';
 import '../domain/note_category.dart';
 import '../domain/note_repo.dart';
+import 'note_detail_page.dart';
 import 'note_modal_sheet.dart';
 
 enum NoteMode { date, category }
@@ -93,9 +96,6 @@ class _NotesViewState extends State<_NotesView> {
   int _month = DateTime.now().month - 1; // 0-indexed
   int? _selectedDay;
 
-  // ── Category mode ────────────────────────────────────────────────────────
-  String? _openCatId;
-
   String get _selectedKey {
     final d = _selectedDay;
     if (d == null) return '';
@@ -115,19 +115,6 @@ class _NotesViewState extends State<_NotesView> {
   @override
   Widget build(BuildContext context) {
     final categories = context.watch<List<NoteCategory>>();
-
-    if (_openCatId != null) {
-      final cat = categories.firstWhere(
-        (c) => c.id == _openCatId,
-        orElse: () =>
-            categories.isNotEmpty ? categories.first : NoteCategory.undefined,
-      );
-      return _CatDetail(
-        category: cat,
-        categories: categories,
-        onBack: () => setState(() => _openCatId = null),
-      );
-    }
 
     return Column(
       children: [
@@ -376,7 +363,7 @@ class _NotesViewState extends State<_NotesView> {
         ...categories.map((c) {
           final icon = kNoteIconMap[c.iconName] ?? LucideIcons.tag;
           return GestureDetector(
-            onTap: () => setState(() => _openCatId = c.id),
+            onTap: () => context.push('${Routes.notes}/category/${c.id}'),
             child: Container(
               decoration: BoxDecoration(
                 color: AppColors.tint(c.color, 0.08),
@@ -389,15 +376,7 @@ class _NotesViewState extends State<_NotesView> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: c.color.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(icon, size: 18, color: c.color),
-                      ),
+                      _CatIconBadge(catId: c.id, color: c.color, icon: icon),
                       const Spacer(),
                       Text(
                         c.label,
@@ -574,7 +553,7 @@ class _NotesViewState extends State<_NotesView> {
           style: AppText.body(size: 16, weight: FontWeight.w600),
         ),
         content: Text(
-          '確定刪除「${cat.label}」？\n\n此分類下的筆記會移回「無分類」。',
+          '確定刪除「${cat.label}」？\n\n此分類下的札記會移回「無分類」。',
           style: AppText.body(size: 14),
         ),
         actions: [
@@ -675,7 +654,7 @@ class _DayPanel extends StatelessWidget {
     final repo = context.read<NoteRepo>();
     return Column(
       children: [
-        // Single dark "新增筆記" button — opens the modal sheet.
+        // Single dark "新增札記" button — opens the modal sheet.
         GestureDetector(
           onTap: () => _openAddNoteSheet(context),
           child: Container(
@@ -691,7 +670,7 @@ class _DayPanel extends StatelessWidget {
                 const Icon(LucideIcons.plus, size: 15, color: Colors.white),
                 const SizedBox(width: 6),
                 Text(
-                  '新增 $month月$day日 的筆記',
+                  '新增 $month月$day日 的札記',
                   style: AppText.body(
                     size: 14,
                     weight: FontWeight.w600,
@@ -739,6 +718,77 @@ class _DayNotesList extends StatelessWidget {
 }
 
 // ─── Category Detail ──────────────────────────────────────────────────────────
+
+/// Route target for `notes/category/{catId}`. Re-watches the categories (the
+/// notes-page provider isn't an ancestor of this pushed route), resolves the
+/// one being opened and hands it to [_CatDetail].
+class NoteCategoryDetailPage extends StatelessWidget {
+  const NoteCategoryDetailPage({super.key, required this.catId});
+
+  final String catId;
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = context.read<NoteRepo>();
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: SafeArea(
+        child: StreamProvider<List<NoteCategory>>(
+          create: (_) => repo.watchNoteCategories(),
+          initialData: const <NoteCategory>[],
+          catchError: (_, e) {
+            AppErrors.present(e);
+            return const <NoteCategory>[];
+          },
+          child: Builder(
+            builder: (context) {
+              final categories = context.watch<List<NoteCategory>>();
+              final cat = categories.firstWhere(
+                (c) => c.id == catId,
+                orElse: () => NoteCategory.undefined,
+              );
+              return _CatDetail(
+                category: cat,
+                categories: categories,
+                onBack: () => context.pop(),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The category's icon glyph in a rounded tile — shared (via [Hero]) between the
+/// category grid card and the category detail header.
+class _CatIconBadge extends StatelessWidget {
+  const _CatIconBadge({
+    required this.catId,
+    required this.color,
+    required this.icon,
+  });
+
+  final String catId;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Hero(
+      tag: 'cat-icon-$catId',
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, size: 18, color: color),
+      ),
+    );
+  }
+}
 
 class _CatDetail extends StatelessWidget {
   final NoteCategory category;
@@ -823,11 +873,18 @@ class _CatDetail extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Icon(icon, size: 20, color: category.color),
-                  const SizedBox(width: 8),
-                  Text(
-                    category.label,
-                    style: AppText.display(size: 24, weight: FontWeight.w500),
+                  _CatIconBadge(
+                    catId: category.id,
+                    color: category.color,
+                    icon: icon,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      category.label,
+                      style: AppText.display(size: 24, weight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -860,7 +917,7 @@ class _CatDetail extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '新增筆記',
+                        '新增札記',
                         style: AppText.body(
                           size: 14,
                           weight: FontWeight.w600,
@@ -891,7 +948,7 @@ class _CatCount extends StatelessWidget {
       stream: context.read<NoteRepo>().watchNotesByCategory(catId),
       builder: (context, snap) {
         final count = snap.data?.length ?? 0;
-        return Text('$count 則筆記', style: AppText.caption(size: 11));
+        return Text('$count 則札記', style: AppText.caption(size: 11));
       },
     );
   }
@@ -924,10 +981,10 @@ class _NoteCardState extends State<_NoteCard> {
         backgroundColor: AppColors.bg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          '刪除筆記',
+          '刪除札記',
           style: AppText.body(size: 16, weight: FontWeight.w600),
         ),
-        content: Text('確定刪除這份筆記？', style: AppText.body(size: 14)),
+        content: Text('確定刪除這份札記？', style: AppText.body(size: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -961,6 +1018,15 @@ class _NoteCardState extends State<_NoteCard> {
     final cat = note.category;
 
     return MrCard(
+      onTap: () => context.push(
+        '${Routes.notes}/${note.id}',
+        extra: NoteDetailArgs(
+          note: note,
+          heroTag: note.attachments.any((a) => a.type == 'image')
+              ? noteImageHeroTag(note.id, surface: 'notes')
+              : null,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1008,21 +1074,16 @@ class _NoteCardState extends State<_NoteCard> {
             ),
           ],
           const SizedBox(height: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Text(
-              note.content,
-              maxLines: _expanded ? null : 2,
-              overflow: _expanded
-                  ? TextOverflow.visible
-                  : TextOverflow.ellipsis,
-              style: AppText.label(size: 13, color: AppColors.muted),
-            ),
+          Text(
+            note.content,
+            maxLines: _expanded ? null : 2,
+            overflow:
+                _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: AppText.label(size: 13, color: AppColors.muted),
           ),
           if (note.attachments.isNotEmpty) ...[
             const SizedBox(height: 8),
-            _AttachmentRow(attachments: note.attachments),
+            _AttachmentRow(note: note),
           ],
         ],
       ),
@@ -1051,18 +1112,27 @@ class _IconAction extends StatelessWidget {
 }
 
 class _AttachmentRow extends StatelessWidget {
-  final List<NoteAttachment> attachments;
-  const _AttachmentRow({required this.attachments});
+  final Note note;
+  const _AttachmentRow({required this.note});
 
   @override
   Widget build(BuildContext context) {
+    final attachments = note.attachments;
+    // The first image carries the Hero shared with the note detail page.
+    final firstImageIndex = attachments.indexWhere((a) => a.type == 'image');
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: attachments.map((a) {
+      children: attachments.asMap().entries.map((e) {
+        final a = e.value;
         switch (a.type) {
           case 'image':
-            return _ImageThumb(att: a);
+            return _ImageThumb(
+              att: a,
+              heroTag: e.key == firstImageIndex
+                  ? noteImageHeroTag(note.id, surface: 'notes')
+                  : null,
+            );
           case 'audio':
             return _AttachInfoChip(icon: LucideIcons.music, label: a.filename);
           default:
@@ -1078,7 +1148,8 @@ class _AttachmentRow extends StatelessWidget {
 
 class _ImageThumb extends StatefulWidget {
   final NoteAttachment att;
-  const _ImageThumb({required this.att});
+  final String? heroTag;
+  const _ImageThumb({required this.att, this.heroTag});
 
   @override
   State<_ImageThumb> createState() => _ImageThumbState();
@@ -1103,21 +1174,6 @@ class _ImageThumbState extends State<_ImageThumb> {
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }
-  }
-
-  void _showViewer() {
-    final url = _url;
-    if (url == null) return;
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(8),
-        child: InteractiveViewer(
-          child: Image.network(url, fit: BoxFit.contain),
-        ),
-      ),
-    );
   }
 
   @override
@@ -1164,7 +1220,11 @@ class _ImageThumbState extends State<_ImageThumb> {
         ),
       );
     }
-    return GestureDetector(onTap: _showViewer, child: content);
+    // Taps fall through to the enclosing note card, which opens the full view.
+    if (widget.heroTag != null) {
+      return Hero(tag: widget.heroTag!, child: content);
+    }
+    return content;
   }
 }
 

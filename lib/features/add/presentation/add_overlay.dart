@@ -262,7 +262,7 @@ class _AddOverlayState extends State<AddOverlay> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '行程、待辦、靈感、筆記或回顧都可以混在一起。',
+                      '行程、待辦、靈感、札記或回顧都可以混在一起。',
                       style: AppText.caption(size: 11, color: AppColors.muted),
                     ),
                     const SizedBox(height: 14),

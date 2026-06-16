@@ -20,7 +20,7 @@ const _kBaseCats = <_CatMeta>[
   _CatMeta('calendar', '行事曆', LucideIcons.calendar, AppColors.sage),
   _CatMeta('todo', '待辦', LucideIcons.check, AppColors.blue),
   _CatMeta('idea', '靈感', LucideIcons.lightbulb, AppColors.amber),
-  _CatMeta('note', '筆記', LucideIcons.fileText, AppColors.rose),
+  _CatMeta('note', '札記', LucideIcons.fileText, AppColors.rose),
 ];
 const _kRecapCat =
     _CatMeta('recap', '回顧', LucideIcons.bookOpen, AppColors.muted);
@@ -181,7 +181,7 @@ class _SmartAddEditSheetState extends State<_SmartAddEditSheet> {
             if (_selectedMainCats.contains('note') &&
                 widget.noteCats.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text('筆記分類',
+              Text('札記分類',
                   style: AppText.caption(
                       size: 11, weight: FontWeight.w500, color: AppColors.muted)),
               const SizedBox(height: 6),

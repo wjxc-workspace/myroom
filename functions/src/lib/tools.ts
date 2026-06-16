@@ -87,8 +87,8 @@ export function buildChatTools(todoCats: TodoCatSnapshot[]) {
     fn("delete_idea", "刪除一個靈感", {
       id: prop("string", "靈感的資料庫 id"),
     }, ["id"]),
-    fn("delete_note", "刪除一則筆記", {
-      id: prop("string", "筆記的資料庫 id"),
+    fn("delete_note", "刪除一則札記", {
+      id: prop("string", "札記的資料庫 id"),
     }, ["id"]),
     fn(
       "add_idea",
@@ -98,10 +98,10 @@ export function buildChatTools(todoCats: TodoCatSnapshot[]) {
     ),
     fn(
       "add_note",
-      "新增一則筆記（儲存後 AI 會自動分類）",
+      "新增一則札記（儲存後 AI 會自動分類）",
       {
         date_key: prop("string", "日期 YYYY-MM-DD，預設今天"),
-        content: prop("string", "筆記內容"),
+        content: prop("string", "札記內容"),
       },
       ["content"]
     ),
@@ -117,7 +117,7 @@ export function buildChatTools(todoCats: TodoCatSnapshot[]) {
     fn("list_todos", "列出待辦事項（含 id）", {}, []),
     fn("list_events", "列出近期行程（含 id）", {}, []),
     fn("list_ideas", "列出靈感（含 id）", {}, []),
-    fn("list_notes", "列出近期筆記（含 id）", {}, []),
+    fn("list_notes", "列出近期札記（含 id）", {}, []),
   ];
 }
 
@@ -179,7 +179,7 @@ export async function runToolCall(
     case "add_note":
       return addNote(ctx, args);
     case "delete_note":
-      return del(`users/${uid}/notes/${str(args.id)}`, "筆記", args.id);
+      return del(`users/${uid}/notes/${str(args.id)}`, "札記", args.id);
     case "add_recap":
       return addRecap(ctx, args);
     case "list_todos":
@@ -275,7 +275,7 @@ async function addNote(ctx: ToolContext, a: Args): Promise<string> {
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  return "已新增筆記";
+  return "已新增札記";
 }
 
 async function addRecap(ctx: ToolContext, a: Args): Promise<string> {

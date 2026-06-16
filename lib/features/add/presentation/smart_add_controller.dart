@@ -79,13 +79,13 @@ class SmartAddController extends ChangeNotifier {
   int get noteCount => _items.whereType<ClassifiedNote>().length;
   int get recapCount => _items.whereType<ClassifiedRecap>().length;
 
-  /// e.g. "AI 想新增 3 個行程、2 個待辦、1 則筆記".
+  /// e.g. "AI 想新增 3 個行程、2 個待辦、1 則札記".
   String get summary {
     final parts = <String>[
       if (eventCount > 0) '$eventCount 個行程',
       if (todoCount > 0) '$todoCount 個待辦',
       if (ideaCount > 0) '$ideaCount 個靈感',
-      if (noteCount > 0) '$noteCount 則筆記',
+      if (noteCount > 0) '$noteCount 則札記',
       if (recapCount > 0) '$recapCount 則回顧',
     ];
     return parts.isEmpty ? 'AI 沒有可新增的項目' : 'AI 想新增 ${parts.join('、')}';
