@@ -65,6 +65,8 @@ export function classifyMultiSystemPrompt(args: {
   attachment_indices 僅可出現在 type=="note" 的 item 上；其他類型不可使用此欄位。
   每個附件索引最多只能出現在一個 note 中；若一段輸入只產生一個 note，所有附件都歸於它；
   若沒有附件或沒有 note，attachment_indices 應為空陣列。
+- 使用者可能指示閱讀附加檔案，或是隱晦的需要其中的資料。如果使用者個指示模糊或包含未定義的名稱，
+  先閱讀附加檔案來尋找缺失的資料。
 
 規則：
 - 只回傳 JSON，不含其他文字
